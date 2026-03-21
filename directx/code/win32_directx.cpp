@@ -9,7 +9,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         {
             PostQuitMessage(69);
         } break;
+        
+        case WM_KEYDOWN:
+        {
+            if(wParam == 'F')
+            {
+                SetWindowText(hwnd, "Sick");
+            }
+        } break;
+        case WM_KEYUP:
+        {
+            if(wParam == 'F')
+            {
+                SetWindowText(hwnd, "DirectX Tutorial");
+            }
+        } break;
     }
+    
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
