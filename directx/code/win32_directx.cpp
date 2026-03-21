@@ -1,15 +1,34 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
+#include <dxgidebug.h>
 #include <math.h>
+#include "dxerr.cpp"
 
+// MISC
 struct Timer
 {
     LARGE_INTEGER start;
     LARGE_INTEGER frequency;
 };
 
+// DirectX11
 #pragma comment(lib, "d3d11.lib") // Tells Compiler to link to this library
+#pragma comment(lib, "dxguid.lib") // Tells Compiler to link to this library
+
+struct HrException
+{
+    int line;
+    const char *file;
+    HRESULT hr;
+    char info[4096];
+};
+
+struct DxgiInfoManager
+{
+    unsigned long long next;
+    IDXGIInfoQueue *pDxgiInfoQueue;
+};
 
 // Main DirectX 11 Globals
 ID3D11Device *pDevice = 0;
@@ -17,9 +36,178 @@ IDXGISwapChain *pSwap = 0;
 ID3D11DeviceContext *pContext = 0;
 ID3D11RenderTargetView *pTarget = 0;
 
+#ifdef _DEBUG
+DxgiInfoManager gInfoManager;
+#endif
+
+void
+HRException(HrException *error, int line, const char *file,
+            HRESULT hr, const char **infoMsgs, int msgCount)
+{
+    error->line = line;
+    error->file = file;
+    error->hr = hr;
+    error->info[0] = '\0';
+    
+    // Join messages
+    for(int i = 0;
+        i < msgCount;
+        i++)
+    {
+        strncat(error->info, infoMsgs[i], sizeof(error->info) - strlen(error->info) - 1);
+        strncat(error->info, "\n", sizeof(error->info) - strlen(error->info) - 1);
+    }
+    
+    // Remove newline
+    size_t len = strlen(error->info);
+    if(len > 0)
+    {
+        error->info[len - 1] = '\0';
+    }
+}
+
+
+void
+DxgiInfoManagerSet(DxgiInfoManager *m)
+{
+    // DXGI_DEBUG_ALL   - gives all Direct3D and DXGI objects and private apps
+    // DXGI_DEBUG_DX    - gives all Direct3D and DXGI objects
+    // DXGI_DEBUG_DXGI  - gives DXGI
+    // DXGI_DEBUG_APP   - gives private apps
+    // DXGI_DEBUG_D3D11 - gives Direct3D
+    
+    m->next = m->pDxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL);
+}
+
+// returns number of messages written into outMessages
+// caller must free each string with HeapFree
+#ifdef _DEBUG
+
+#define GFX_THROW_FAILED(hrcall)                                            \
+DxgiInfoManagerSet(&gInfoManager);                                      \
+if(FAILED(hr = (hrcall)))                                               \
+{                                                                       \
+char *msgs[64];                                                     \
+int msgCount = 0;                                                   \
+char fullMsg[4096] = {};                                            \
+_snprintf_s(fullMsg, sizeof(fullMsg), _TRUNCATE, "%s", #hrcall);   \
+strncat(fullMsg, "\n", sizeof(fullMsg) - strlen(fullMsg) - 1);     \
+msgCount = DxgiInfoManagerGetMessages(&gInfoManager, msgs, 64);    \
+for(int _i = 0; _i < msgCount; _i++)                               \
+{                                                                   \
+strncat(fullMsg, msgs[_i], sizeof(fullMsg) - strlen(fullMsg) - 1); \
+strncat(fullMsg, "\n", sizeof(fullMsg) - strlen(fullMsg) - 1); \
+}                                                                   \
+DxgiInfoManagerFreeMessages(msgs, msgCount);                       \
+DXTraceA(__FILE__, __LINE__, hr, fullMsg, true);                   \
+__debugbreak();                                                     \
+}
+
+#else
+
+#define GFX_THROW_FAILED(hrcall)                             \
+if(FAILED(hr = (hrcall)))                                \
+{                                                        \
+DXTraceA(__FILE__,__LINE__, hr, #hrcall, true);      \
+__debugbreak();                                      \
+}                                                        
+
+#endif
+
+#define GFX_DEVICE_REMOVED_EXCEPT(hr) DeviceRemovedException(hr)
+
+
+void
+DxgiInfoManagerFreeMessages(char **messages, int count)
+{
+    for(int i = 0; i < count; i++)
+        HeapFree(GetProcessHeap(), 0, messages[i]);
+}
+
+int
+DxgiInfoManagerGetMessages(DxgiInfoManager *m, char **outMessages, int maxMessages)
+{
+    int count = 0;
+    UINT64 end = m->pDxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL);
+    
+    for(UINT64 i = m->next; i < end && count < maxMessages; i++)
+    {
+        HRESULT hr;
+        SIZE_T messageLength = 0;
+        if(FAILED(hr = m->pDxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, i, 0, &messageLength)))
+        {
+            DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
+            __debugbreak();
+            
+            
+        }
+        
+        DXGI_INFO_QUEUE_MESSAGE *pMessage = (DXGI_INFO_QUEUE_MESSAGE*)
+            HeapAlloc(GetProcessHeap(), 0, messageLength);
+        
+        if(FAILED(hr = m->pDxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, i, pMessage, &messageLength)))
+        {
+            
+            DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
+            __debugbreak();
+        }
+        
+        // copy description into a separate allocation
+        SIZE_T descLen = strlen(pMessage->pDescription) + 1;
+        outMessages[count] = (char*)HeapAlloc(GetProcessHeap(), 0, descLen);
+        memcpy(outMessages[count], pMessage->pDescription, descLen);
+        count++;
+        
+        HeapFree(GetProcessHeap(), 0, pMessage);
+    }
+    return count;
+}
+
+void
+DeviceRemovedException(HRESULT hr)
+{
+    DXTraceA(__FILE__, __LINE__, hr, "Device Removed (DXGI_ERROR_DEVICE_REMOVED)", true);
+    __debugbreak();
+}
+
+
+void
+DxgiInfoManagerInit(DxgiInfoManager *m)
+{
+    m->next = 0u;
+    m->pDxgiInfoQueue = 0;
+    
+    typedef HRESULT (WINAPI* DXGIGetDebugInterface)(REFIID, void**);
+    
+    HMODULE hModDxgiDebug = LoadLibraryExA("dxgidebug.dll", 0, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if(hModDxgiDebug == 0)
+    {
+        OutputDebugStringA("Failed to load dxgidebug.dll\n");
+        __debugbreak();
+    }
+    
+    DXGIGetDebugInterface DxgiGetDebugInterface = (DXGIGetDebugInterface)(void*)
+        GetProcAddress(hModDxgiDebug, "DXGIGetDebugInterface");
+    if(DxgiGetDebugInterface == 0)
+    {
+        OutputDebugStringA("Failed to get DXGIGetDebugInterface\n");
+        __debugbreak();
+    }
+    
+    HRESULT hr;
+    if(FAILED(hr = DxgiGetDebugInterface(__uuidof(IDXGIInfoQueue), (void**)&m->pDxgiInfoQueue)))
+    {
+        DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
+        __debugbreak();
+    }
+}
+
 void
 InitD3D(HWND hwnd)
 {
+    // For error checking of D3D functions
+    HRESULT hr;
+    
     DXGI_SWAP_CHAIN_DESC sd = {};
     sd.BufferDesc.Width = 0;
     sd.BufferDesc.Height = 0;
@@ -37,35 +225,48 @@ InitD3D(HWND hwnd)
     sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; // Vanilla
     sd.Flags = 0;
     
-    D3D11CreateDeviceAndSwapChain(
-                                  0,
-                                  D3D_DRIVER_TYPE_HARDWARE,
-                                  0,
-                                  0,
-                                  0,
-                                  0,
-                                  D3D11_SDK_VERSION,
-                                  &sd,
-                                  &pSwap,
-                                  &pDevice,
-                                  0,
-                                  &pContext
-                                  );
+    UINT swapCreateFlags = 0u;
+    
+#ifdef _DEBUG
+    swapCreateFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+    GFX_THROW_FAILED(D3D11CreateDeviceAndSwapChain(
+                                                   0,
+                                                   D3D_DRIVER_TYPE_HARDWARE,
+                                                   0,
+                                                   swapCreateFlags,
+                                                   0,
+                                                   0,
+                                                   D3D11_SDK_VERSION,
+                                                   &sd,
+                                                   &pSwap,
+                                                   &pDevice,
+                                                   0,
+                                                   &pContext
+                                                   ));
     
     // Gain access to texture subresource in swap chain (back buffer)
     ID3D11Resource *pBackBuffer = 0;
-    pSwap->GetBuffer(0, __uuidof(ID3D11Resource), (void**)&pBackBuffer);
-    pDevice->CreateRenderTargetView(pBackBuffer, 0, &pTarget);
+    GFX_THROW_FAILED(pSwap->GetBuffer(0, __uuidof(ID3D11Resource), (void**)&pBackBuffer));
+    GFX_THROW_FAILED(pDevice->CreateRenderTargetView(pBackBuffer, 0, &pTarget));
     
     // No longer required only needed to create the RenderTargetView
     pBackBuffer->Release();
     
 }
 
+
 void
 EndFrame()
 {
-    pSwap->Present(1u, 0u);
+    HRESULT hr;
+    if(FAILED(hr = pSwap->Present(1u, 0u)))
+    {
+        if(hr == DXGI_ERROR_DEVICE_REMOVED)
+            GFX_DEVICE_REMOVED_EXCEPT(pDevice->GetDeviceRemovedReason());
+        else
+            GFX_THROW_FAILED(hr);
+    }
 }
 
 void
@@ -97,7 +298,7 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         case WM_CLOSE:
         {
-            PostQuitMessage(69);
+            PostQuitMessage(17);
         } break;
         
         case WM_KEYDOWN:
@@ -163,6 +364,10 @@ CALLBACK WinMain(
                                );
     
     ShowWindow(hwnd, SW_SHOW);
+#ifdef _DEBUG
+    DxgiInfoManagerInit(&gInfoManager);
+#endif
+    
     InitD3D(hwnd);
     Timer timer;
     TimerInit(&timer);
