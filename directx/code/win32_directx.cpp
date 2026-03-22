@@ -4,6 +4,7 @@
 #include <dxgidebug.h>
 #include <math.h>
 #include "dxerr.cpp"
+#include <d3dcompiler.h>
 
 // MISC
 struct Timer
@@ -15,6 +16,7 @@ struct Timer
 // DirectX11
 #pragma comment(lib, "d3d11.lib") // Tells Compiler to link to this library
 #pragma comment(lib, "dxguid.lib") // Tells Compiler to link to this library
+#pragma comment(lib, "D3DCompiler.lib") // for loading shaders
 
 struct HrException
 {
@@ -35,6 +37,12 @@ ID3D11Device *pDevice = 0;
 IDXGISwapChain *pSwap = 0;
 ID3D11DeviceContext *pContext = 0;
 ID3D11RenderTargetView *pTarget = 0;
+
+// Resources
+ID3D11Buffer *pVertexBuffer = 0;
+ID3D11VertexShader *pVertexShader = 0;
+ID3D11PixelShader *pPixelShader = 0;
+ID3D11InputLayout *pInputLayout = 0;
 
 #ifdef _DEBUG
 DxgiInfoManager gInfoManager;
@@ -83,6 +91,27 @@ DxgiInfoManagerSet(DxgiInfoManager *m)
 // caller must free each string with HeapFree
 #ifdef _DEBUG
 
+#define GFX_THROW_INFO_ONLY(call)                                                  \
+DxgiInfoManagerSet(&gInfoManager);                                             \
+(call);                                                                        \
+{                                                                              \
+char *msgs[64];                                                            \
+int msgCount = DxgiInfoManagerGetMessages(&gInfoManager, msgs, 64);        \
+if(msgCount > 0)                                                           \
+{                                                                          \
+char fullMsg[4096] = {};                                               \
+for(int _i = 0; _i < msgCount; _i++)                                   \
+{                                                                      \
+strncat(fullMsg, msgs[_i], sizeof(fullMsg) - strlen(fullMsg) - 1); \
+strncat(fullMsg, "\n", sizeof(fullMsg) - strlen(fullMsg) - 1);     \
+}                                                                      \
+DxgiInfoManagerFreeMessages(msgs, msgCount);                           \
+DXTraceA(__FILE__, __LINE__, S_OK, fullMsg, true);                     \
+__debugbreak();                                                        \
+}                                                                          \
+}
+
+
 #define GFX_THROW_FAILED(hrcall)                                            \
 DxgiInfoManagerSet(&gInfoManager);                                      \
 if(FAILED(hr = (hrcall)))                                               \
@@ -105,6 +134,7 @@ __debugbreak();                                                     \
 
 #else
 
+#define GFX_THROW_INFO_ONLY(call) (call)
 #define GFX_THROW_FAILED(hrcall)                             \
 if(FAILED(hr = (hrcall)))                                \
 {                                                        \
@@ -277,6 +307,97 @@ ClearBuffer(float red, float green, float blue)
 }
 
 void
+DrawTestTriangle()
+{
+    HRESULT hr;
+    
+    struct Vertex
+    {
+        float x;
+        float y;
+    };
+    
+    Vertex vertices[] = 
+    {
+        { 0.0f,  0.5f },
+        { 0.5f, -0.5f },
+        {-0.5f, -0.5f },
+    };
+    
+    
+    D3D11_BUFFER_DESC bd = {};
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.CPUAccessFlags = 0u;
+    bd.MiscFlags = 0u;
+    bd.ByteWidth = sizeof(vertices);
+    bd.StructureByteStride = sizeof(Vertex);
+    
+    D3D11_SUBRESOURCE_DATA sd = {};
+    sd.pSysMem = vertices;
+    
+    GFX_THROW_FAILED(hr = (pDevice->CreateBuffer(&bd, &sd, &pVertexBuffer)));
+    const UINT stride = sizeof(Vertex);
+    const UINT offset = 0u;
+    pContext->IASetVertexBuffers(0u, 1u, &pVertexBuffer, &stride, &offset);
+    
+    // Create vertex shader
+    ID3DBlob *pBlob = 0;
+    GFX_THROW_FAILED(D3DReadFileToBlob(L"../directx/code/shaders/vertex.cso", &pBlob));
+    
+    GFX_THROW_FAILED(pDevice->CreateVertexShader(
+                                                 pBlob->GetBufferPointer(),
+                                                 pBlob->GetBufferSize(),
+                                                 0,
+                                                 &pVertexShader));
+    // Bind vertex shader
+    pContext->VSSetShader(pVertexShader, 0, 0u);
+    
+    // Create input layout
+    D3D11_INPUT_ELEMENT_DESC ied[] = {
+        {"Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    GFX_THROW_FAILED(pDevice->CreateInputLayout(
+                                                ied, 1u,
+                                                pBlob->GetBufferPointer(),
+                                                pBlob->GetBufferSize(),
+                                                &pInputLayout));
+    pContext->IASetInputLayout(pInputLayout);
+    
+    pBlob->Release();
+    pBlob = 0;
+    
+    // Create pixel shader
+    GFX_THROW_FAILED(D3DReadFileToBlob(L"../directx/code/shaders/pixel.cso", &pBlob));
+    GFX_THROW_FAILED(pDevice->CreatePixelShader(
+                                                pBlob->GetBufferPointer(),
+                                                pBlob->GetBufferSize(),
+                                                0,
+                                                &pPixelShader));
+    // Bind pixel shader
+    pContext->PSSetShader(pPixelShader, 0, 0u);
+    
+    // Bind render target
+    pContext->OMSetRenderTargets(1u, &pTarget, 0);
+    
+    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    
+    // Configure viewport
+    D3D11_VIEWPORT vp;
+    vp.Width = 640;
+    vp.Height = 480;
+    vp.MinDepth = 0;
+    vp.MaxDepth = 1;
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    pContext->RSSetViewports(1u, &vp);
+    
+    pContext->Draw(3u, 0u);
+    
+    pBlob->Release();
+}
+
+void
 TimerInit(Timer *t)
 {
     QueryPerformanceFrequency(&t->frequency);
@@ -387,6 +508,21 @@ CALLBACK WinMain(
         
         float c = sin(TimerPeek(&timer)) / 2.0f + 0.5f;
         ClearBuffer(c, c, 1.0f);
+        DrawTestTriangle();
         EndFrame();
     }
+    
+    // Not worth releasing as OS will Release automatically upon process termination
+    // Free D3D11 resources
+    /*
+        pVertexBuffer->Release();
+        pVertexShader->Release();
+        pInputLayout->Release();
+        pPixelShader->Release();
+        
+        pTarget->Release();
+        pContext->Release();
+        pSwap->Release();
+        pDevice->Release();
+        */
 }
