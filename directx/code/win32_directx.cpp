@@ -53,6 +53,7 @@ ID3D11RenderTargetView *pTarget = 0;
 ID3D11Buffer *pVertexBuffer = 0;
 ID3D11Buffer *pIndexBuffer = 0;
 ID3D11Buffer *pConstantBuffer = 0;
+ID3D11Buffer *pConstantBuffer2 = 0;
 ID3D11VertexShader *pVertexShader = 0;
 ID3D11PixelShader *pPixelShader = 0;
 ID3D11InputLayout *pInputLayout = 0;
@@ -338,18 +339,6 @@ DrawTestTriangle(float angle, float x, float y)
     
     HRESULT hr;
     
-    /*
-    struct Vertex
-    {
-        float x;
-        float y;
-        unsigned char r;
-        unsigned char g;
-        unsigned char b;
-        unsigned char a;
-    };
-    */
-    
     struct Vertex
     {
         struct
@@ -358,32 +347,22 @@ DrawTestTriangle(float angle, float x, float y)
             float y;
             float z;
         } pos;
-        
-        struct
-        {
-            unsigned char r;
-            unsigned char g;
-            unsigned char b;
-            unsigned char a;
-        } color;
     };
     
     Vertex vertices[] = 
     {
-        {-1.0f, -1.0f, -1.0f, 255, 0,   0},
-        { 1.0f, -1.0f, -1.0f, 0,   255, 0},
-        {-1.0f,  1.0f, -1.0f, 0,   0,   255},
-        { 1.0f,  1.0f, -1.0f, 255, 255, 0},
-        {-1.0f, -1.0f,  1.0f, 255, 0,   255},
-        { 1.0f, -1.0f,  1.0f, 0,   255, 255},
-        {-1.0f,  1.0f,  1.0f, 0,   0,   0},
-        { 1.0f,  1.0f,  1.0f, 255, 255, 255},
+        {-1.0f, -1.0f, -1.0f},
+        { 1.0f, -1.0f, -1.0f},
+        {-1.0f,  1.0f, -1.0f},
+        { 1.0f,  1.0f, -1.0f},
+        {-1.0f, -1.0f,  1.0f},
+        { 1.0f, -1.0f,  1.0f},
+        {-1.0f,  1.0f,  1.0f},
+        { 1.0f,  1.0f,  1.0f},
         
     };
     
     UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
-    
-    vertices[0].color.g = 255;
     
     D3D11_BUFFER_DESC bd = {};
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
@@ -418,14 +397,6 @@ DrawTestTriangle(float angle, float x, float y)
     // Create input layout
     D3D11_INPUT_ELEMENT_DESC ied[] = {
         {"Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        
-        // NOTE(trist007): 8u offset for Color element cause we are 8 bytes into ied
-        // since Position has 2 floats which is 8 bytes
-        // you can also just use D3D11_APPEND_ALIGNED_ELEMENT which auto calculates offset
-        
-        // NOTE(trist007): changing from UINT to UNORM, UINT goes 0-255 UNORM will normalize to float
-        // 0 will be 0.0f 128 will be 0.5f and 255 will be 1.0f
-        {"Color", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     
     UINT numElements = sizeof(ied) / sizeof(ied[0]);
@@ -507,6 +478,43 @@ DrawTestTriangle(float angle, float x, float y)
     
     // Bind constant buffer to vertex shader
     pContext->VSSetConstantBuffers(0u, 1u, &pConstantBuffer);
+    
+    struct ConstantBuffer2
+    {
+        struct
+        {
+            float r;
+            float g;
+            float b;
+            float a;
+        } face_colors[6];
+    };
+    
+    const ConstantBuffer2 cb2 =
+    {
+        {
+            {1.0f, 0.0f, 1.0f},
+            {1.0f, 0.0f, 0.0f},
+            {0.0f, 1.0f, 0.0f},
+            {0.0f, 0.0f, 1.0f},
+            {1.0f, 1.0f, 0.0f},
+            {0.0f, 1.0f, 1.0f},
+        }
+    };
+    
+    D3D11_BUFFER_DESC cbd2;
+    cbd2.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd2.Usage = D3D11_USAGE_DEFAULT;
+    cbd2.CPUAccessFlags = 0u;
+    cbd2.MiscFlags = 0u;
+    cbd2.ByteWidth = sizeof(cb2);
+    cbd2.StructureByteStride = 0u;
+    D3D11_SUBRESOURCE_DATA csd2 = {};
+    csd2.pSysMem = &cb2;
+    GFX_THROW_FAILED(pDevice->CreateBuffer(&cbd2, &csd2, &pConstantBuffer2));
+    
+    // Bind constant buffer 2 to pixel shader
+    pContext->PSSetConstantBuffers(0u, 1u, &pConstantBuffer2);
     
     // Create pixel shader
     GFX_THROW_FAILED(D3DReadFileToBlob(L"../directx/code/shaders/pixel.cso", &pBlob));
