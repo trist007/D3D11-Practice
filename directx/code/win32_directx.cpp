@@ -663,6 +663,11 @@ CALLBACK WinMain(
         POINT mousePos;
         GetCursorPos(&mousePos);
         ScreenToClient(hwnd, &mousePos);
+        
+        DrawTestTriangle(-t,
+                         0.0f,
+                         0.0f);
+        
         DrawTestTriangle(t,
                          (float)mousePos.x/320.0f - 1.0f,
                          // NOTE(trist007): mouse input and directx y coordinate
