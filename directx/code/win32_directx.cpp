@@ -314,10 +314,9 @@ ClearBuffer(float red, float green, float blue)
 }
 
 void
-DrawTestTriangle()
+DrawTestTriangle(float angle)
 {
     HRESULT hr;
-    float angle;
     
     /*
     struct Vertex
@@ -492,8 +491,8 @@ DrawTestTriangle()
     
     // Configure viewport
     D3D11_VIEWPORT vp;
-    vp.Width = 400;
-    vp.Height = 300;
+    vp.Width = 640;
+    vp.Height = 480;
     vp.MinDepth = 0;
     vp.MaxDepth = 1;
     vp.TopLeftX = 0;
@@ -616,9 +615,10 @@ CALLBACK WinMain(
             DispatchMessage(&msg);
         }
         
-        float c = sin(TimerPeek(&timer)) / 2.0f + 0.5f;
+        float t = TimerPeek(&timer);
+        float c = sin(t) / 2.0f + 0.5f;
         ClearBuffer(c, c, 1.0f);
-        DrawTestTriangle();
+        DrawTestTriangle(t);
         EndFrame();
     }
     
