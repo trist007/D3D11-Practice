@@ -356,6 +356,7 @@ DrawTestTriangle(float angle, float x, float y)
         {
             float x;
             float y;
+            float z;
         } pos;
         
         struct
@@ -369,12 +370,15 @@ DrawTestTriangle(float angle, float x, float y)
     
     Vertex vertices[] = 
     {
-        { 0.0f,  0.5f, 255, 0, 0, 0 },
-        { 0.5f, -0.5f, 0, 255, 0, 0 },
-        {-0.5f, -0.5f, 0, 0, 255, 0 },
-        {-0.3f,  0.3f, 0, 255, 0, 0 },
-        { 0.3f,  0.3f, 0, 0, 255, 0 },
-        { 0.0f, -1.0f, 255, 0, 0, 0 },
+        {-1.0f, -1.0f, -1.0f, 255, 0,   0},
+        { 1.0f, -1.0f, -1.0f, 0,   255, 0},
+        {-1.0f,  1.0f, -1.0f, 0,   0,   255},
+        { 1.0f,  1.0f, -1.0f, 255, 255, 0},
+        {-1.0f, -1.0f,  1.0f, 255, 0,   255},
+        { 1.0f, -1.0f,  1.0f, 0,   255, 255},
+        {-1.0f,  1.0f,  1.0f, 0,   0,   0},
+        { 1.0f,  1.0f,  1.0f, 255, 255, 255},
+        
     };
     
     UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
@@ -413,7 +417,7 @@ DrawTestTriangle(float angle, float x, float y)
     
     // Create input layout
     D3D11_INPUT_ELEMENT_DESC ied[] = {
-        {"Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
         
         // NOTE(trist007): 8u offset for Color element cause we are 8 bytes into ied
         // since Position has 2 floats which is 8 bytes
@@ -439,10 +443,12 @@ DrawTestTriangle(float angle, float x, float y)
     // Create index buffer
     const unsigned short indices[] =
     {
-        0, 1, 2,
-        0, 2, 3,
-        0, 4, 1,
-        2, 1, 5,
+        0,2,1, 2,3,1,
+        1,3,5, 3,7,5,
+        2,6,3, 3,6,7,
+        4,5,7, 4,7,6,
+        0,4,2, 2,4,6,
+        0,1,4, 1,5,4
     };
     
     D3D11_BUFFER_DESC ibd = {};
@@ -481,8 +487,9 @@ DrawTestTriangle(float angle, float x, float y)
             // Transpose
             dx::XMMatrixTranspose(
                                   dx::XMMatrixRotationZ(angle) *                   // rotation
-                                  dx::XMMatrixScaling(3.0f/4.0f, 1.0f, 1.0f) *     // scaling
-                                  dx::XMMatrixTranslation(x, y, 0.0f)   // move mesh with mouse 
+                                  dx::XMMatrixRotationX(angle) *                   // rotation
+                                  dx::XMMatrixTranslation(x, y, 4.0f) *  // move mesh with mouse 
+                                  dx::XMMatrixPerspectiveLH(1.0f, 3.0f/4.0f, 0.5f, 10.0f)
                                   )
         }
     };
