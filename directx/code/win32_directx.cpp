@@ -320,12 +320,11 @@ DrawTestTriangle()
     Vertex vertices[] = 
     {
         { 0.0f,  0.5f },
-        { 0.5f, -0.5f },
         
         { 0.5f, -0.5f },
-        {-0.5f, -0.5f },
         
         {-0.5f, -0.5f },
+        
         { 0.0f,  0.5f },
     };
     
@@ -386,7 +385,7 @@ DrawTestTriangle()
     // Bind render target
     pContext->OMSetRenderTargets(1u, &pTarget, 0);
     
-    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
     
     // Configure viewport
     D3D11_VIEWPORT vp;
