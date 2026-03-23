@@ -354,7 +354,7 @@ DrawTestTriangle(float angle)
         {-0.5f, -0.5f, 0, 0, 255, 0 },
         {-0.3f,  0.3f, 0, 255, 0, 0 },
         { 0.3f,  0.3f, 0, 0, 255, 0 },
-        { 0.0f, -0.8f, 255, 0, 0, 0 },
+        { 0.0f, -1.0f, 255, 0, 0, 0 },
     };
     
     UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
@@ -453,10 +453,10 @@ DrawTestTriangle(float angle)
     const ConstantBuffer cb =
     {
         {
-            cosf(angle),  sinf(angle), 0.0f, 0.0f,
-            -sinf(angle), cosf(angle), 0.0f, 0.0f,
-            0.0f,        0.0f,       1.0f, 0.0f,
-            0.0f,        0.0f,       0.0f, 1.0f,
+            (3.0f/4.0f)*cosf(angle),  sinf(angle), 0.0f, 0.0f,
+            (3.0f/4.0f)*-sinf(angle), cosf(angle), 0.0f, 0.0f,
+            0.0f,                     0.0f,        1.0f, 0.0f,
+            0.0f,                     0.0f,        0.0f, 1.0f,
         }
     };
     
