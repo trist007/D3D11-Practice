@@ -317,18 +317,19 @@ DrawTestTriangle()
     {
         float x;
         float y;
-        float r;
-        float g;
-        float b;
+        unsigned char r;
+        unsigned char g;
+        unsigned char b;
+        unsigned char a;
     };
     
     Vertex vertices[] = 
     {
-        { 0.0f,  0.5f, 1.0f, 0.0f, 0.0f },
+        { 0.0f,  0.5f, 255, 0, 0, 0 },
         
-        { 0.5f, -0.5f, 0.0f, 1.0f, 0.0f },
+        { 0.5f, -0.5f, 0, 255, 0, 0 },
         
-        {-0.5f, -0.5f, 0.0f, 0.0f, 1.0f },
+        {-0.5f, -0.5f, 0, 0, 255, 0 },
     };
     
     UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
@@ -364,10 +365,14 @@ DrawTestTriangle()
     // Create input layout
     D3D11_INPUT_ELEMENT_DESC ied[] = {
         {"Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        
         // NOTE(trist007): 8u offset for Color element cause we are 8 bytes into ied
         // since Position has 2 floats which is 8 bytes
         // you can also just use D3D11_APPEND_ALIGNED_ELEMENT which auto calculates offset
-        {"Color", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        
+        // NOTE(trist007): changing from UINT to UNORM, UINT goes 0-255 UNORM will normalize to float
+        // 0 will be 0.0f 128 will be 0.5f and 255 will be 1.0f
+        {"Color", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     
     UINT numElements = sizeof(ied) / sizeof(ied[0]);
