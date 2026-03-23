@@ -320,8 +320,22 @@ ClearBuffer(float red, float green, float blue)
 }
 
 void
-DrawTestTriangle(float angle)
+DrawTestTriangle(float angle, float x, float y)
 {
+    /* Example of using a dx::XMVector
+    dx::XMVECTOR v = dx::XMVectorSet(3.0f, 3.0f, 0.0f, 0.0f);
+    auto result = dx::XMVector3Transform(v, dx::XMMatrixScaling(1.5f,0.0f,0.0f));
+    auto xx = dx::XMVectorGetX(result);
+*/
+    // NOTE(trist007): XMVector and XMMatrix are the main workhorses in DirectXMath
+    // they need to be 16-byte aligned so that SIMD operations can take place,
+    // so allocate on the stack because if you 
+    // allocate on the heap they won't be necessary aligned
+    // It is easier and more compact to use XMFLOAT3 and XMFLOAT4 because they don't
+    // require the 16-byte alignment they use less memory too, you can convert
+    // XMFLOATS to to a XMVECTOR perform all operations cause SIMD then afterwards
+    // convert it back to XMFLOATS
+    
     HRESULT hr;
     
     /*
@@ -467,7 +481,8 @@ DrawTestTriangle(float angle)
             // Transpose
             dx::XMMatrixTranspose(
                                   dx::XMMatrixRotationZ(angle) *                   // rotation
-                                  dx::XMMatrixScaling(3.0f/4.0f, 1.0f, 1.0f)   // scaling
+                                  dx::XMMatrixScaling(3.0f/4.0f, 1.0f, 1.0f) *     // scaling
+                                  dx::XMMatrixTranslation(x, y, 0.0f)   // move mesh with mouse 
                                   )
         }
     };
@@ -630,7 +645,15 @@ CALLBACK WinMain(
         float t = TimerPeek(&timer);
         float c = sin(t) / 2.0f + 0.5f;
         ClearBuffer(c, c, 1.0f);
-        DrawTestTriangle(t);
+        POINT mousePos;
+        GetCursorPos(&mousePos);
+        ScreenToClient(hwnd, &mousePos);
+        DrawTestTriangle(t,
+                         (float)mousePos.x/320.0f - 1.0f,
+                         // NOTE(trist007): mouse input and directx y coordinate
+                         // are opposites
+                         ((float)mousePos.y/240.0f - 1.0f)*-1.0f
+                         );
         EndFrame();
     }
     
