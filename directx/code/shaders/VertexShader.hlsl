@@ -13,7 +13,9 @@ cbuffer CBuf
     // interpreted differently so row 0 gets read as column 0 which transposes the matrix
     // can also use DirectXMath function XMMatrixTranspose on the C side before uploading it
     // this also changes the direction of rotation
-    row_major matrix transform;
+    // NOTE(trist007): doing row_major is slower so i will remove row_major from matrix transform
+    // just be sure to run dx::XMMatrixTranspose on the matrixrotationz and matrixscaling 
+    matrix transform;
 };
 
 VSOut main(float2 pos : Position,float3 color : Color)

@@ -6,6 +6,12 @@
 #include "dxerr.cpp"
 #include <d3dcompiler.h>
 
+// NOTE(trist007): This include uses namespaces of DirectX
+// I don't want to do using namespace DirectX so I will use
+// my own namespace
+#include <DirectXMath.h>
+namespace dx = DirectX;
+
 // Ignore Warnings
 #pragma warning(disable:4700)
 
@@ -444,19 +450,25 @@ DrawTestTriangle(float angle)
     // Create constant buffer
     struct ConstantBuffer
     {
-        struct
-        {
-            float element[4][4];
-        } transformation;
+        // NOTE(trist007):  XMMATRIX is a 4x4 float matrix
+        dx::XMMATRIX transform;
     };
     
     const ConstantBuffer cb =
     {
         {
-            (3.0f/4.0f)*cosf(angle),  sinf(angle), 0.0f, 0.0f,
-            (3.0f/4.0f)*-sinf(angle), cosf(angle), 0.0f, 0.0f,
-            0.0f,                     0.0f,        1.0f, 0.0f,
-            0.0f,                     0.0f,        0.0f, 1.0f,
+            // NOTE(trist007): there is Operator Overloading, you can use "*" instead
+            // of 
+            // dx::XMMatrixMultiply(
+            // dx::XMMatrixRotationZ(angle),               
+            // dx::XMMatrixScaling(3.0f/4.0f, 1.0f, 1.0f)  
+            // )
+            // NOTE(trist007): since I removed row_major in the VertexShader.hlsl I will have to
+            // Transpose
+            dx::XMMatrixTranspose(
+                                  dx::XMMatrixRotationZ(angle) *                   // rotation
+                                  dx::XMMatrixScaling(3.0f/4.0f, 1.0f, 1.0f)   // scaling
+                                  )
         }
     };
     
