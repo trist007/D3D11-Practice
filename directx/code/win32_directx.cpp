@@ -6,6 +6,9 @@
 #include "dxerr.cpp"
 #include <d3dcompiler.h>
 
+// Ignore Warnings
+#pragma warning(disable:4700)
+
 // MISC
 struct Timer
 {
@@ -43,6 +46,7 @@ ID3D11RenderTargetView *pTarget = 0;
 // Resources
 ID3D11Buffer *pVertexBuffer = 0;
 ID3D11Buffer *pIndexBuffer = 0;
+ID3D11Buffer *pConstantBuffer = 0;
 ID3D11VertexShader *pVertexShader = 0;
 ID3D11PixelShader *pPixelShader = 0;
 ID3D11InputLayout *pInputLayout = 0;
@@ -313,6 +317,7 @@ void
 DrawTestTriangle()
 {
     HRESULT hr;
+    float angle;
     
     /*
     struct Vertex
@@ -375,31 +380,6 @@ DrawTestTriangle()
     const UINT offset = 0u;
     pContext->IASetVertexBuffers(0u, 1u, &pVertexBuffer, &stride, &offset);
     
-    // Create index buffer
-    const unsigned short indices[] =
-    {
-        0, 1, 2,
-        0, 2, 3,
-        0, 4, 1,
-        2, 1, 5,
-    };
-    
-    D3D11_BUFFER_DESC ibd = {};
-    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    ibd.Usage = D3D11_USAGE_DEFAULT;
-    ibd.CPUAccessFlags = 0u;
-    ibd.MiscFlags = 0u;
-    ibd.ByteWidth = sizeof(indices);
-    ibd.StructureByteStride = sizeof(unsigned short);
-    D3D11_SUBRESOURCE_DATA isd = {};
-    isd.pSysMem = indices;
-    
-    GFX_THROW_FAILED(hr = (pDevice->CreateBuffer(&ibd, &isd, &pIndexBuffer)));
-    
-    
-    // Bind index buffer
-    pContext->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R16_UINT, 0u);
-    
     // Create vertex shader
     ID3DBlob *pBlob = 0;
     GFX_THROW_FAILED(D3DReadFileToBlob(L"../directx/code/shaders/vertex.cso", &pBlob));
@@ -437,6 +417,64 @@ DrawTestTriangle()
     pBlob->Release();
     pBlob = 0;
     
+    // Create index buffer
+    const unsigned short indices[] =
+    {
+        0, 1, 2,
+        0, 2, 3,
+        0, 4, 1,
+        2, 1, 5,
+    };
+    
+    D3D11_BUFFER_DESC ibd = {};
+    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    ibd.Usage = D3D11_USAGE_DEFAULT;
+    ibd.CPUAccessFlags = 0u;
+    ibd.MiscFlags = 0u;
+    ibd.ByteWidth = sizeof(indices);
+    ibd.StructureByteStride = sizeof(unsigned short);
+    D3D11_SUBRESOURCE_DATA isd = {};
+    isd.pSysMem = indices;
+    
+    GFX_THROW_FAILED(hr = (pDevice->CreateBuffer(&ibd, &isd, &pIndexBuffer)));
+    
+    
+    // Bind index buffer
+    pContext->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R16_UINT, 0u);
+    
+    // Create constant buffer
+    struct ConstantBuffer
+    {
+        struct
+        {
+            float element[4][4];
+        } transformation;
+    };
+    
+    const ConstantBuffer cb =
+    {
+        {
+            cosf(angle),  sinf(angle), 0.0f, 0.0f,
+            -sinf(angle), cosf(angle), 0.0f, 0.0f,
+            0.0f,        0.0f,       1.0f, 0.0f,
+            0.0f,        0.0f,       0.0f, 1.0f,
+        }
+    };
+    
+    D3D11_BUFFER_DESC cbd;
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.Usage = D3D11_USAGE_DYNAMIC;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    cbd.MiscFlags = 0u;
+    cbd.ByteWidth = sizeof(cb);
+    cbd.StructureByteStride = 0u;
+    D3D11_SUBRESOURCE_DATA csd = {};
+    csd.pSysMem = &cb;
+    GFX_THROW_FAILED(pDevice->CreateBuffer(&cbd, &csd, &pConstantBuffer));
+    
+    // Bind constant buffer to vertex shader
+    pContext->VSSetConstantBuffers(0u, 1u, &pConstantBuffer);
+    
     // Create pixel shader
     GFX_THROW_FAILED(D3DReadFileToBlob(L"../directx/code/shaders/pixel.cso", &pBlob));
     GFX_THROW_FAILED(pDevice->CreatePixelShader(
@@ -454,8 +492,8 @@ DrawTestTriangle()
     
     // Configure viewport
     D3D11_VIEWPORT vp;
-    vp.Width = 640;
-    vp.Height = 480;
+    vp.Width = 400;
+    vp.Height = 300;
     vp.MinDepth = 0;
     vp.MaxDepth = 1;
     vp.TopLeftX = 0;
