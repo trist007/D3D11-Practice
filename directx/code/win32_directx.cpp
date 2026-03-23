@@ -313,6 +313,7 @@ DrawTestTriangle()
 {
     HRESULT hr;
     
+    /*
     struct Vertex
     {
         float x;
@@ -322,17 +323,47 @@ DrawTestTriangle()
         unsigned char b;
         unsigned char a;
     };
+    */
+    
+    struct Vertex
+    {
+        struct
+        {
+            float x;
+            float y;
+        } pos;
+        
+        struct
+        {
+            unsigned char r;
+            unsigned char g;
+            unsigned char b;
+            unsigned char a;
+        } color;
+    };
     
     Vertex vertices[] = 
     {
         { 0.0f,  0.5f, 255, 0, 0, 0 },
+        { 0.5f, -0.5f, 0, 255, 0, 0 },
+        {-0.5f, -0.5f, 0, 0, 255, 0 },
         
+        { 0.0f,  0.5f, 255, 0, 0, 0 },
+        {-0.5f, -0.5f, 0, 0, 255, 0 },
+        {-0.3f,  0.3f, 0, 255, 0, 0 },
+        
+        { 0.0f,  0.5f, 255, 0, 0, 0 },
+        { 0.3f,  0.3f, 0, 0, 255, 0 },
         { 0.5f, -0.5f, 0, 255, 0, 0 },
         
+        { 0.0f, -0.8f, 255, 0, 0, 0 },
         {-0.5f, -0.5f, 0, 0, 255, 0 },
+        { 0.5f, -0.5f, 0, 255, 0, 0 },
     };
     
     UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
+    
+    vertices[0].color.g = 255;
     
     D3D11_BUFFER_DESC bd = {};
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
