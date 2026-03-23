@@ -321,9 +321,15 @@ DrawTestTriangle()
     {
         { 0.0f,  0.5f },
         { 0.5f, -0.5f },
+        
+        { 0.5f, -0.5f },
         {-0.5f, -0.5f },
+        
+        {-0.5f, -0.5f },
+        { 0.0f,  0.5f },
     };
     
+    UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
     
     D3D11_BUFFER_DESC bd = {};
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
@@ -380,7 +386,7 @@ DrawTestTriangle()
     // Bind render target
     pContext->OMSetRenderTargets(1u, &pTarget, 0);
     
-    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     
     // Configure viewport
     D3D11_VIEWPORT vp;
@@ -392,7 +398,7 @@ DrawTestTriangle()
     vp.TopLeftY = 0;
     pContext->RSSetViewports(1u, &vp);
     
-    pContext->Draw(3u, 0u);
+    pContext->Draw(vertexCount, 0u);
     
     pBlob->Release();
 }
