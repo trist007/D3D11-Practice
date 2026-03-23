@@ -13,6 +13,8 @@ struct Timer
     LARGE_INTEGER frequency;
 };
 
+#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+
 // DirectX11
 #pragma comment(lib, "d3d11.lib") // Tells Compiler to link to this library
 #pragma comment(lib, "dxguid.lib") // Tells Compiler to link to this library
@@ -315,17 +317,18 @@ DrawTestTriangle()
     {
         float x;
         float y;
+        float r;
+        float g;
+        float b;
     };
     
     Vertex vertices[] = 
     {
-        { 0.0f,  0.5f },
+        { 0.0f,  0.5f, 1.0f, 0.0f, 0.0f },
         
-        { 0.5f, -0.5f },
+        { 0.5f, -0.5f, 0.0f, 1.0f, 0.0f },
         
-        {-0.5f, -0.5f },
-        
-        { 0.0f,  0.5f },
+        {-0.5f, -0.5f, 0.0f, 0.0f, 1.0f },
     };
     
     UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
@@ -361,9 +364,16 @@ DrawTestTriangle()
     // Create input layout
     D3D11_INPUT_ELEMENT_DESC ied[] = {
         {"Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        // NOTE(trist007): 8u offset for Color element cause we are 8 bytes into ied
+        // since Position has 2 floats which is 8 bytes
+        // you can also just use D3D11_APPEND_ALIGNED_ELEMENT which auto calculates offset
+        {"Color", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
+    
+    UINT numElements = sizeof(ied) / sizeof(ied[0]);
+    
     GFX_THROW_FAILED(pDevice->CreateInputLayout(
-                                                ied, 1u,
+                                                ied, numElements,
                                                 pBlob->GetBufferPointer(),
                                                 pBlob->GetBufferSize(),
                                                 &pInputLayout));
@@ -385,7 +395,7 @@ DrawTestTriangle()
     // Bind render target
     pContext->OMSetRenderTargets(1u, &pTarget, 0);
     
-    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
+    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     
     // Configure viewport
     D3D11_VIEWPORT vp;

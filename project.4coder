@@ -24,8 +24,8 @@ load_paths = {
 };
 
 commands = {
-    .make = {
-        .win = "C:\dev\directx\directx\code\build-make.bat",
+    .compile_shaders = {
+        .win = "C:\dev\directx\directx\code\shaders\compile.bat",
         .lin = "/home/trist007/dev/directx/directx/code/run.sh",
         .out = "*run*",
         .footer_panel = true,
@@ -57,7 +57,7 @@ commands = {
 };
 
 fkey_command = {
-    .F1 = "make",
+    .F1 = "compile_shaders",
     .F2 = "run",
     .F3 = "debug",
     .F5 = "make_clean",
