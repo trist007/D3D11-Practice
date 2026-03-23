@@ -42,6 +42,7 @@ ID3D11RenderTargetView *pTarget = 0;
 
 // Resources
 ID3D11Buffer *pVertexBuffer = 0;
+ID3D11Buffer *pIndexBuffer = 0;
 ID3D11VertexShader *pVertexShader = 0;
 ID3D11PixelShader *pPixelShader = 0;
 ID3D11InputLayout *pInputLayout = 0;
@@ -347,18 +348,9 @@ DrawTestTriangle()
         { 0.0f,  0.5f, 255, 0, 0, 0 },
         { 0.5f, -0.5f, 0, 255, 0, 0 },
         {-0.5f, -0.5f, 0, 0, 255, 0 },
-        
-        { 0.0f,  0.5f, 255, 0, 0, 0 },
-        {-0.5f, -0.5f, 0, 0, 255, 0 },
         {-0.3f,  0.3f, 0, 255, 0, 0 },
-        
-        { 0.0f,  0.5f, 255, 0, 0, 0 },
         { 0.3f,  0.3f, 0, 0, 255, 0 },
-        { 0.5f, -0.5f, 0, 255, 0, 0 },
-        
         { 0.0f, -0.8f, 255, 0, 0, 0 },
-        {-0.5f, -0.5f, 0, 0, 255, 0 },
-        { 0.5f, -0.5f, 0, 255, 0, 0 },
     };
     
     UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
@@ -377,9 +369,36 @@ DrawTestTriangle()
     sd.pSysMem = vertices;
     
     GFX_THROW_FAILED(hr = (pDevice->CreateBuffer(&bd, &sd, &pVertexBuffer)));
+    
+    
     const UINT stride = sizeof(Vertex);
     const UINT offset = 0u;
     pContext->IASetVertexBuffers(0u, 1u, &pVertexBuffer, &stride, &offset);
+    
+    // Create index buffer
+    const unsigned short indices[] =
+    {
+        0, 1, 2,
+        0, 2, 3,
+        0, 4, 1,
+        2, 1, 5,
+    };
+    
+    D3D11_BUFFER_DESC ibd = {};
+    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    ibd.Usage = D3D11_USAGE_DEFAULT;
+    ibd.CPUAccessFlags = 0u;
+    ibd.MiscFlags = 0u;
+    ibd.ByteWidth = sizeof(indices);
+    ibd.StructureByteStride = sizeof(unsigned short);
+    D3D11_SUBRESOURCE_DATA isd = {};
+    isd.pSysMem = indices;
+    
+    GFX_THROW_FAILED(hr = (pDevice->CreateBuffer(&ibd, &isd, &pIndexBuffer)));
+    
+    
+    // Bind index buffer
+    pContext->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R16_UINT, 0u);
     
     // Create vertex shader
     ID3DBlob *pBlob = 0;
@@ -443,7 +462,9 @@ DrawTestTriangle()
     vp.TopLeftY = 0;
     pContext->RSSetViewports(1u, &vp);
     
-    pContext->Draw(vertexCount, 0u);
+    // NOTE(trist007): need to use DrawIndexed instead of Draw if using indexes
+    //pContext->Draw(vertexCount, 0u);
+    pContext->DrawIndexed(ArrayCount(indices), 0u, 0u);
     
     pBlob->Release();
 }
