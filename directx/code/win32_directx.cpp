@@ -27,6 +27,9 @@ namespace dx = DirectX;
 // MISC
 // ======================================================================================
 
+// globals
+bool gPaused = false;
+
 #define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
 struct Timer
@@ -843,6 +846,8 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             {
                 SetWindowText(hwnd, "Sick");
             }
+            if(wParam == VK_SPACE)
+                gPaused = !gPaused;
         } break;
         case WM_KEYUP:
         {
@@ -965,7 +970,16 @@ CALLBACK WinMain(
         while(PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
         {
             if(msg.message == WM_QUIT)
-                break;
+            {
+                // don't need to release em as OS will
+                MeshRelease(&cube);
+                ShaderPipelineRelease(&pipeline);
+                ConstantBuffersRelease(&cb);
+                TextureRelease(&tex);
+                SamplerRelease(&sampler);
+                
+                return((int)msg.wParam);
+            }
             
             TranslateMessage(&msg);
             DispatchMessage(&msg);
@@ -973,6 +987,8 @@ CALLBACK WinMain(
         
         float t = TimerPeek(&timer);
         float c = sinf(t) / 2.0f + 0.5f;
+        
+        float draw_t = gPaused ? 0.0f : t;
         
         RendererClear(&r, c, c, 1.0f);
         
@@ -983,17 +999,12 @@ CALLBACK WinMain(
         TextureBind(&r, &tex);
         SamplerBind(&r, &sampler);
         
-        DrawCube(&r, &cube, &pipeline, &cb, -t, 0.0f, 0.0f, projection);
-        DrawCube(&r, &cube, &pipeline, &cb,  t,
+        //DrawCube(&r, &cube, &pipeline, &cb, -t, 0.0f, 0.0f, projection);
+        DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
                  (float)mouse.x / 320.0f - 1.0f,
                  ((float)mouse.y / 240.0f - 1.0f) * -1.0f,
                  projection);
         
         RendererPresent(&r);
     }
-    
-    MeshRelease(&cube);
-    ShaderPipelineRelease(&pipeline);
-    ConstantBuffersRelease(&cb);
-    return (int)msg.wParam;
 }
