@@ -1,11 +1,10 @@
-cbuffer CBuf
-{
-    float4 face_colors[6];
-};
+Texture2D tex;
 
-float4 main(uint tid : SV_PrimitiveID) : SV_Target
+SamplerState splr;
+
+float4 main(float2 tc : TexCoord) : SV_Target
 {
-    return face_colors[tid / 2];
+    return tex.Sample(splr, tc);
 }
 
 // compile: fxc /T ps_5_0 /E main /Fo pixel.cso PixelShader.hlsl

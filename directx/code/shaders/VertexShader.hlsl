@@ -12,9 +12,20 @@ cbuffer CBuf
     matrix transform;
 };
 
-float4 main(float3 pos : Position) : SV_Position
+struct VSOut
 {
-    return mul(float4(pos, 1.0f), transform);
+    float2 tex : TexCoord;
+    float4 pos : SV_Position;
+};
+
+VSOut main(float3 pos : Position, float2 tex : TexCoord)
+{
+    VSOut vso;
+    
+    vso.pos = mul(float4(pos, 1.0f), transform);
+    vso.tex = tex;
+    
+    return vso;
 }
 
 // compile: fxc /T vs_5_0 /E main /Fo vertex.cso VertexShader.hlsl

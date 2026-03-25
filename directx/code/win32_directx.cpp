@@ -6,6 +6,9 @@
 #include "dxerr.cpp"
 #include <d3dcompiler.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 // NOTE(trist007): This include uses namespaces of DirectX
 // I don't want to do using namespace DirectX so I will use
 // my own namespace
@@ -369,6 +372,193 @@ RendererPresent(Renderer *r)
 }
 
 // ======================================================================================
+// SURFACE
+// ======================================================================================
+
+struct Surface
+{
+    unsigned char *pixels;
+    int            width;
+    int            height;
+    bool           has_alpha;
+};
+
+bool
+SurfaceLoad(Surface *s, const wchar_t *path)
+{
+    char narrow[256];
+    WideCharToMultiByte(CP_UTF8, 0, path, -1, narrow, sizeof(narrow), 0, 0);
+    
+    int channels = 0;
+    
+    // force 4 channels (RGBA) on load
+    s->pixels = stbi_load(narrow, &s->width, &s->height, &channels, 4);
+    
+    if(!s->pixels)
+    {
+        OutputDebugStringA("SurfaceLoad failed: ");
+        OutputDebugStringA(stbi_failure_reason());
+        OutputDebugStringA("\n");
+        
+        return(false);
+    }
+    
+    s->has_alpha = (channels == 4);
+    return(true);
+}
+
+void
+SurfaceFree(Surface *s)
+{
+    if(s->pixels) { stbi_image_free(s->pixels); s->pixels = 0; }
+}
+
+
+UINT SurfaceWidth(Surface *s)  { return (UINT)s->width;  }
+UINT SurfaceHeight(Surface *s) { return (UINT)s->height; }
+UINT SurfaceRowPitch(Surface *s) { return (UINT)s->width * 4u; } // stb_image never pads rows
+
+unsigned char *
+SurfacePixels(Surface *s)
+{
+    return(s->pixels);
+}
+
+// ======================================================================================
+// TEXTURE
+// ======================================================================================
+
+struct Texture
+{
+    ID3D11ShaderResourceView *srv;
+    UINT                      slot;
+    bool                      has_alpha;
+};
+
+void
+TextureInit(Renderer *r, Texture *t, const wchar_t *path, UINT slot)
+{
+    HRESULT hr;
+    
+    t->slot      = slot;
+    t->has_alpha = false;
+    
+    Surface s = {};
+    char err[256];
+    if(!SurfaceLoad(&s, path))
+    {
+        OutputDebugStringA(err);
+        __debugbreak();
+    }
+    
+    t->has_alpha = s.has_alpha;
+    
+    D3D11_TEXTURE2D_DESC td  = {};
+    td.Width                 = SurfaceWidth(&s);
+    td.Height                = SurfaceHeight(&s);
+    td.MipLevels             = 1; // no mipmapping
+    td.ArraySize             = 1;
+    td.Format                = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.SampleDesc.Count      = 1;
+    td.SampleDesc.Quality    = 0;
+    td.Usage                 = D3D11_USAGE_DEFAULT;
+    td.BindFlags             = D3D11_BIND_SHADER_RESOURCE;
+    td.CPUAccessFlags        = 0;
+    td.MiscFlags             = 0;
+    
+    D3D11_SUBRESOURCE_DATA sd = {};
+    sd.pSysMem     = SurfacePixels(&s);
+    sd.SysMemPitch = SurfaceRowPitch(&s);
+    
+    ID3D11Texture2D *pTex = 0;
+    GFX_THROW_FAILED(r->device->CreateTexture2D(&td, &sd, &pTex));
+    
+    // Upload top mip — must use actual row pitch from the scratch image, 
+    // not width*4, because DirectXTex may pad rows
+    
+    /*
+r->context->UpdateSubresource(
+                                  pTex, 0u, 0,
+                                  SurfacePixels(&s),
+                                  SurfaceRowPitch(&s),
+                                  0u
+                                  );
+    */
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvd = {};
+    srvd.Format                          = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srvd.ViewDimension                   = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvd.Texture2D.MostDetailedMip       = 0;
+    srvd.Texture2D.MipLevels             = 1;
+    GFX_THROW_FAILED(r->device->CreateShaderResourceView(pTex, &srvd, &t->srv));
+    
+    //r->context->GenerateMips(t->srv);
+    
+    pTex->Release();
+    SurfaceFree(&s);
+}
+
+void
+TextureBind(Renderer *r, Texture *t)
+{
+    GFX_THROW_INFO_ONLY(
+                        r->context->PSSetShaderResources(t->slot, 1u, &t->srv)
+                        );
+}
+
+void
+TextureRelease(Texture *t)
+{
+    if(t->srv) { t->srv->Release(); t->srv = 0; }
+}
+
+// ======================================================================================
+// SAMPLER
+// ======================================================================================
+
+typedef enum
+{
+    SAMPLER_ANISOTROPIC,
+    SAMPLER_BILINEAR,
+    SAMPLER_POINT,
+} SamplerType;
+
+struct Sampler
+{
+    ID3D11SamplerState *state;
+    UINT                slot;
+};
+
+void
+SamplerInit(Renderer *r, Sampler *s, SamplerType type, bool reflect, UINT slot)
+{
+    HRESULT hr;
+    
+    s->slot = slot;
+    
+    D3D11_SAMPLER_DESC sd       = {};
+    sd.Filter                   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.AddressU                 = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressV                 = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressW                 = D3D11_TEXTURE_ADDRESS_WRAP;
+    
+    GFX_THROW_FAILED(r->device->CreateSamplerState(&sd, &s->state));
+}
+
+void
+SamplerBind(Renderer *r, Sampler *s)
+{
+    GFX_THROW_INFO_ONLY(
+                        r->context->PSSetSamplers(s->slot, 1u, &s->state)
+                        );
+}
+
+void
+SamplerRelease(Sampler *s)
+{
+    if(s->state) { s->state->Release(); s->state = 0; }
+}
+
+// ======================================================================================
 // MESH
 // ======================================================================================
 
@@ -380,6 +570,12 @@ struct Vertex
         float y;
         float z;
     } pos;
+    
+    struct
+    {
+        float u;
+        float v;
+    } tex;
 };
 
 struct Mesh
@@ -460,6 +656,7 @@ ShaderPipelineInit(Renderer *r, ShaderPipeline *sp,
     // Create input layout
     D3D11_INPUT_ELEMENT_DESC ied[] = {
         {"Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, sizeof(float) * 3, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     
     GFX_THROW_FAILED(r->device->CreateInputLayout(
@@ -721,14 +918,14 @@ CALLBACK WinMain(
     // Cube mesh
     Vertex vertices[] =
     {
-        {-1.0f, -1.0f, -1.0f},
-        { 1.0f, -1.0f, -1.0f},
-        {-1.0f,  1.0f, -1.0f},
-        { 1.0f,  1.0f, -1.0f},
-        {-1.0f, -1.0f,  1.0f},
-        { 1.0f, -1.0f,  1.0f},
-        {-1.0f,  1.0f,  1.0f},
-        { 1.0f,  1.0f,  1.0f},
+        {-1.0f, -1.0f, -1.0f,    0.0f, 0.0f},
+        { 1.0f, -1.0f, -1.0f,    1.0f, 0.0f},
+        {-1.0f,  1.0f, -1.0f,    0.0f, 1.0f},
+        { 1.0f,  1.0f, -1.0f,    1.0f, 1.0f},
+        {-1.0f, -1.0f,  1.0f,    0.0f, 0.0f},
+        { 1.0f, -1.0f,  1.0f,    1.0f, 0.0f},
+        {-1.0f,  1.0f,  1.0f,    0.0f, 1.0f},
+        { 1.0f,  1.0f,  1.0f,    1.0f, 1.0f},
     };
     unsigned short indices[] =
     {
@@ -751,6 +948,12 @@ CALLBACK WinMain(
     ConstantBuffersInit(&r, &cb);
     
     dx::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 10.0f);
+    
+    Texture tex = {};
+    TextureInit(&r, &tex, L"../directx/code/textures/background.png", 0u);
+    
+    Sampler sampler = {};
+    SamplerInit(&r, &sampler, SAMPLER_BILINEAR, false, 0u);
     
     Timer timer;
     TimerInit(&timer);
@@ -776,6 +979,9 @@ CALLBACK WinMain(
         POINT mouse;
         GetCursorPos(&mouse);
         ScreenToClient(hwnd, &mouse);
+        
+        TextureBind(&r, &tex);
+        SamplerBind(&r, &sampler);
         
         DrawCube(&r, &cube, &pipeline, &cb, -t, 0.0f, 0.0f, projection);
         DrawCube(&r, &cube, &pipeline, &cb,  t,
