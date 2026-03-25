@@ -15,19 +15,41 @@ namespace dx = DirectX;
 // Ignore Warnings
 #pragma warning(disable:4700)
 
+// DirectX11 Libraries
+#pragma comment(lib, "d3d11.lib") // Tells Compiler to link to this library
+#pragma comment(lib, "dxguid.lib") // Tells Compiler to link to this library
+#pragma comment(lib, "D3DCompiler.lib") // for loading shaders
+
+// ======================================================================================
 // MISC
+// ======================================================================================
+
+#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+
 struct Timer
 {
     LARGE_INTEGER start;
     LARGE_INTEGER frequency;
 };
 
-#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+void
+TimerInit(Timer *t)
+{
+    QueryPerformanceFrequency(&t->frequency);
+    QueryPerformanceCounter(&t->start);
+}
 
-// DirectX11
-#pragma comment(lib, "d3d11.lib") // Tells Compiler to link to this library
-#pragma comment(lib, "dxguid.lib") // Tells Compiler to link to this library
-#pragma comment(lib, "D3DCompiler.lib") // for loading shaders
+float
+TimerPeek(Timer *t)
+{
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return((float)(now.QuadPart - t->start.QuadPart) / (float)t->frequency.QuadPart);
+}
+
+// ======================================================================================
+// ERROR / DEBUG
+// ======================================================================================
 
 struct HrException
 {
@@ -43,54 +65,55 @@ struct DxgiInfoManager
     IDXGIInfoQueue *pDxgiInfoQueue;
 };
 
-// Main DirectX 11 Globals
-ID3D11Device *pDevice = 0;
-IDXGISwapChain *pSwap = 0;
-ID3D11DeviceContext *pContext = 0;
-ID3D11RenderTargetView *pTarget = 0;
-ID3D11DepthStencilView *pDSV = 0;
-
-// Resources
-ID3D11Buffer *pVertexBuffer = 0;
-ID3D11Buffer *pIndexBuffer = 0;
-ID3D11Buffer *pConstantBuffer = 0;
-ID3D11Buffer *pConstantBuffer2 = 0;
-ID3D11VertexShader *pVertexShader = 0;
-ID3D11PixelShader *pPixelShader = 0;
-ID3D11InputLayout *pInputLayout = 0;
-ID3D11DepthStencilState *pDSState = 0;
-ID3D11Texture2D *pDepthStencil = 0;
-
 #ifdef _DEBUG
 DxgiInfoManager gInfoManager;
 #endif
 
 void
-HRException(HrException *error, int line, const char *file,
-            HRESULT hr, const char **infoMsgs, int msgCount)
+DxgiInfoManagerFreeMessages(char **messages, int count)
 {
-    error->line = line;
-    error->file = file;
-    error->hr = hr;
-    error->info[0] = '\0';
-    
-    // Join messages
-    for(int i = 0;
-        i < msgCount;
-        i++)
-    {
-        strncat(error->info, infoMsgs[i], sizeof(error->info) - strlen(error->info) - 1);
-        strncat(error->info, "\n", sizeof(error->info) - strlen(error->info) - 1);
-    }
-    
-    // Remove newline
-    size_t len = strlen(error->info);
-    if(len > 0)
-    {
-        error->info[len - 1] = '\0';
-    }
+    for(int i = 0; i < count; i++)
+        HeapFree(GetProcessHeap(), 0, messages[i]);
 }
 
+int
+DxgiInfoManagerGetMessages(DxgiInfoManager *m, char **outMessages, int maxMessages)
+{
+    int count = 0;
+    UINT64 end = m->pDxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL);
+    
+    for(UINT64 i = m->next; i < end && count < maxMessages; i++)
+    {
+        HRESULT hr;
+        SIZE_T messageLength = 0;
+        if(FAILED(hr = m->pDxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, i, 0, &messageLength)))
+        {
+            DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
+            __debugbreak();
+            
+            
+        }
+        
+        DXGI_INFO_QUEUE_MESSAGE *pMessage = (DXGI_INFO_QUEUE_MESSAGE*)
+            HeapAlloc(GetProcessHeap(), 0, messageLength);
+        
+        if(FAILED(hr = m->pDxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, i, pMessage, &messageLength)))
+        {
+            
+            DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
+            __debugbreak();
+        }
+        
+        // copy description into a separate allocation
+        SIZE_T descLen = strlen(pMessage->pDescription) + 1;
+        outMessages[count] = (char*)HeapAlloc(GetProcessHeap(), 0, descLen);
+        memcpy(outMessages[count], pMessage->pDescription, descLen);
+        count++;
+        
+        HeapFree(GetProcessHeap(), 0, pMessage);
+    }
+    return count;
+}
 
 void
 DxgiInfoManagerSet(DxgiInfoManager *m)
@@ -104,8 +127,44 @@ DxgiInfoManagerSet(DxgiInfoManager *m)
     m->next = m->pDxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL);
 }
 
-// returns number of messages written into outMessages
-// caller must free each string with HeapFree
+void
+DxgiInfoManagerInit(DxgiInfoManager *m)
+{
+    m->next = 0u;
+    m->pDxgiInfoQueue = 0;
+    
+    typedef HRESULT (WINAPI* DXGIGetDebugInterface)(REFIID, void**);
+    
+    HMODULE hModDxgiDebug = LoadLibraryExA("dxgidebug.dll", 0, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if(hModDxgiDebug == 0)
+    {
+        OutputDebugStringA("Failed to load dxgidebug.dll\n");
+        __debugbreak();
+    }
+    
+    DXGIGetDebugInterface DxgiGetDebugInterface = (DXGIGetDebugInterface)(void*)
+        GetProcAddress(hModDxgiDebug, "DXGIGetDebugInterface");
+    if(DxgiGetDebugInterface == 0)
+    {
+        OutputDebugStringA("Failed to get DXGIGetDebugInterface\n");
+        __debugbreak();
+    }
+    
+    HRESULT hr;
+    if(FAILED(hr = DxgiGetDebugInterface(__uuidof(IDXGIInfoQueue), (void**)&m->pDxgiInfoQueue)))
+    {
+        DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
+        __debugbreak();
+    }
+}
+
+void
+DeviceRemovedException(HRESULT hr)
+{
+    DXTraceA(__FILE__, __LINE__, hr, "Device Removed (DXGI_ERROR_DEVICE_REMOVED)", true);
+    __debugbreak();
+}
+
 #ifdef _DEBUG
 
 #define GFX_THROW_INFO_ONLY(call)                                                  \
@@ -163,114 +222,43 @@ __debugbreak();                                      \
 
 #define GFX_DEVICE_REMOVED_EXCEPT(hr) DeviceRemovedException(hr)
 
+// ======================================================================================
+// RENDERER CORE
+// ======================================================================================
+
+struct Renderer
+{
+    ID3D11Device              *device;
+    IDXGISwapChain              *swap;
+    ID3D11DeviceContext      *context;
+    ID3D11RenderTargetView    *target;
+    ID3D11DepthStencilView       *dsv;
+    ID3D11DepthStencilState *ds_state;
+    ID3D11Texture2D    *depth_stencil;
+};
 
 void
-DxgiInfoManagerFreeMessages(char **messages, int count)
-{
-    for(int i = 0; i < count; i++)
-        HeapFree(GetProcessHeap(), 0, messages[i]);
-}
-
-int
-DxgiInfoManagerGetMessages(DxgiInfoManager *m, char **outMessages, int maxMessages)
-{
-    int count = 0;
-    UINT64 end = m->pDxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL);
-    
-    for(UINT64 i = m->next; i < end && count < maxMessages; i++)
-    {
-        HRESULT hr;
-        SIZE_T messageLength = 0;
-        if(FAILED(hr = m->pDxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, i, 0, &messageLength)))
-        {
-            DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
-            __debugbreak();
-            
-            
-        }
-        
-        DXGI_INFO_QUEUE_MESSAGE *pMessage = (DXGI_INFO_QUEUE_MESSAGE*)
-            HeapAlloc(GetProcessHeap(), 0, messageLength);
-        
-        if(FAILED(hr = m->pDxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, i, pMessage, &messageLength)))
-        {
-            
-            DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
-            __debugbreak();
-        }
-        
-        // copy description into a separate allocation
-        SIZE_T descLen = strlen(pMessage->pDescription) + 1;
-        outMessages[count] = (char*)HeapAlloc(GetProcessHeap(), 0, descLen);
-        memcpy(outMessages[count], pMessage->pDescription, descLen);
-        count++;
-        
-        HeapFree(GetProcessHeap(), 0, pMessage);
-    }
-    return count;
-}
-
-void
-DeviceRemovedException(HRESULT hr)
-{
-    DXTraceA(__FILE__, __LINE__, hr, "Device Removed (DXGI_ERROR_DEVICE_REMOVED)", true);
-    __debugbreak();
-}
-
-
-void
-DxgiInfoManagerInit(DxgiInfoManager *m)
-{
-    m->next = 0u;
-    m->pDxgiInfoQueue = 0;
-    
-    typedef HRESULT (WINAPI* DXGIGetDebugInterface)(REFIID, void**);
-    
-    HMODULE hModDxgiDebug = LoadLibraryExA("dxgidebug.dll", 0, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if(hModDxgiDebug == 0)
-    {
-        OutputDebugStringA("Failed to load dxgidebug.dll\n");
-        __debugbreak();
-    }
-    
-    DXGIGetDebugInterface DxgiGetDebugInterface = (DXGIGetDebugInterface)(void*)
-        GetProcAddress(hModDxgiDebug, "DXGIGetDebugInterface");
-    if(DxgiGetDebugInterface == 0)
-    {
-        OutputDebugStringA("Failed to get DXGIGetDebugInterface\n");
-        __debugbreak();
-    }
-    
-    HRESULT hr;
-    if(FAILED(hr = DxgiGetDebugInterface(__uuidof(IDXGIInfoQueue), (void**)&m->pDxgiInfoQueue)))
-    {
-        DXTraceA(__FILE__, __LINE__, hr, "GetMessage failed", true);
-        __debugbreak();
-    }
-}
-
-void
-InitD3D(HWND hwnd)
+RendererInitSwapChain(Renderer *r, HWND hwnd)
 {
     // For error checking of D3D functions
     HRESULT hr;
     
-    DXGI_SWAP_CHAIN_DESC sd = {};
-    sd.BufferDesc.Width = 0;
-    sd.BufferDesc.Height = 0;
-    sd.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    sd.BufferDesc.RefreshRate.Numerator = 0;
+    DXGI_SWAP_CHAIN_DESC sd               = {};
+    sd.BufferDesc.Width                   = 0;
+    sd.BufferDesc.Height                  = 0;
+    sd.BufferDesc.Format                  = DXGI_FORMAT_B8G8R8A8_UNORM;
+    sd.BufferDesc.RefreshRate.Numerator   = 0;
     sd.BufferDesc.RefreshRate.Denominator = 0;
-    sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-    sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-    sd.SampleDesc.Count = 1; // Anti-aliasing
-    sd.SampleDesc.Quality = 0;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.BufferCount = 1; // Double buffering
-    sd.OutputWindow = hwnd;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; // Vanilla
-    sd.Flags = 0;
+    sd.BufferDesc.Scaling                 = DXGI_MODE_SCALING_UNSPECIFIED;
+    sd.BufferDesc.ScanlineOrdering        = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+    sd.SampleDesc.Count                   = 1; // Anti-aliasing
+    sd.SampleDesc.Quality                 = 0;
+    sd.BufferUsage                        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.BufferCount                        = 1; // Double buffering
+    sd.OutputWindow                       = hwnd;
+    sd.Windowed                           = TRUE;
+    sd.SwapEffect                         = DXGI_SWAP_EFFECT_DISCARD; // Vanilla
+    sd.Flags                              = 0;
     
     UINT swapCreateFlags = 0u;
     
@@ -286,316 +274,361 @@ InitD3D(HWND hwnd)
                                                    0,
                                                    D3D11_SDK_VERSION,
                                                    &sd,
-                                                   &pSwap,
-                                                   &pDevice,
+                                                   &r->swap,
+                                                   &r->device,
                                                    0,
-                                                   &pContext
+                                                   &r->context
                                                    ));
+}
+
+void
+RendererInitRenderTarget(Renderer *r)
+{
+    HRESULT hr;
     
     // Gain access to texture subresource in swap chain (back buffer)
     ID3D11Resource *pBackBuffer = 0;
-    GFX_THROW_FAILED(pSwap->GetBuffer(0, __uuidof(ID3D11Resource), (void**)&pBackBuffer));
-    GFX_THROW_FAILED(pDevice->CreateRenderTargetView(pBackBuffer, 0, &pTarget));
     
-    // Create depth stencil state
-    D3D11_DEPTH_STENCIL_DESC dsDesc = {};
-    dsDesc.DepthEnable = TRUE;
-    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
-    GFX_THROW_FAILED(pDevice->CreateDepthStencilState(&dsDesc, &pDSState));
+    GFX_THROW_FAILED(r->swap->GetBuffer(0, __uuidof(ID3D11Resource), (void**)&pBackBuffer));
+    GFX_THROW_FAILED(r->device->CreateRenderTargetView(pBackBuffer, 0, &r->target));
     
-    // Bind depth state
-    pContext->OMSetDepthStencilState(pDSState, 1u);
-    
-    // Create depth stencil texture
-    D3D11_TEXTURE2D_DESC descDepth = {};
-    descDepth.Width = 640u;
-    descDepth.Height = 480u;
-    descDepth.MipLevels = 1u;
-    descDepth.ArraySize = 1u;
-    descDepth.Format = DXGI_FORMAT_D32_FLOAT; // special format for Depth hence D32
-    descDepth.SampleDesc.Count = 1u;
-    descDepth.SampleDesc.Quality = 0u;
-    descDepth.Usage = D3D11_USAGE_DEFAULT;
-    descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-    GFX_THROW_FAILED(pDevice->CreateTexture2D(&descDepth, 0, &pDepthStencil));
-    
-    // Create view of depth stencil texture
-    D3D11_DEPTH_STENCIL_VIEW_DESC descDSV = {};
-    descDSV.Format = DXGI_FORMAT_D32_FLOAT;
-    descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-    descDSV.Texture2D.MipSlice = 0u;
-    GFX_THROW_FAILED(pDevice->CreateDepthStencilView(pDepthStencil, &descDSV, &pDSV));
-    
-    // Bind depth stencil view to OM pipeline
-    pContext->OMSetRenderTargets(1u, &pTarget, pDSV);
-    
-    // No longer required only needed to create the RenderTargetView
     pBackBuffer->Release();
     
 }
 
-
 void
-EndFrame()
+RendererInitDepthStencil(Renderer *r, UINT width, UINT height)
 {
     HRESULT hr;
-    if(FAILED(hr = pSwap->Present(1u, 0u)))
+    
+    // Create depth stencil state
+    D3D11_DEPTH_STENCIL_DESC dsDesc = {};
+    dsDesc.DepthEnable              = TRUE;
+    dsDesc.DepthWriteMask           = D3D11_DEPTH_WRITE_MASK_ALL;
+    dsDesc.DepthFunc                = D3D11_COMPARISON_LESS;
+    
+    GFX_THROW_FAILED(r->device->CreateDepthStencilState(&dsDesc, &r->ds_state));
+    
+    // Bind depth state
+    r->context->OMSetDepthStencilState(r->ds_state, 1u);
+    
+    // Create depth stencil texture
+    D3D11_TEXTURE2D_DESC descDepth = {};
+    descDepth.Width                = 640u;
+    descDepth.Height               = 480u;
+    descDepth.MipLevels            = 1u;
+    descDepth.ArraySize            = 1u;
+    descDepth.Format               = DXGI_FORMAT_D32_FLOAT; // special format for Depth hence D32
+    descDepth.SampleDesc.Count     = 1u;
+    descDepth.SampleDesc.Quality   = 0u;
+    descDepth.Usage                = D3D11_USAGE_DEFAULT;
+    descDepth.BindFlags            = D3D11_BIND_DEPTH_STENCIL;
+    
+    GFX_THROW_FAILED(r->device->CreateTexture2D(&descDepth, 0, &r->depth_stencil));
+    
+    // Create view of depth stencil texture
+    D3D11_DEPTH_STENCIL_VIEW_DESC descDSV = {};
+    descDSV.Format                        = DXGI_FORMAT_D32_FLOAT;
+    descDSV.ViewDimension                 = D3D11_DSV_DIMENSION_TEXTURE2D;
+    descDSV.Texture2D.MipSlice            = 0u;
+    
+    GFX_THROW_FAILED(r->device->CreateDepthStencilView(r->depth_stencil, &descDSV, &r->dsv));
+    
+    // Bind depth stencil view to OM pipeline
+    r->context->OMSetRenderTargets(1u, &r->target, r->dsv);
+}
+
+void
+RendererInit(Renderer *r, HWND hwnd, UINT width, UINT height)
+{
+    RendererInitSwapChain(r, hwnd);
+    RendererInitRenderTarget(r);
+    RendererInitDepthStencil(r, width, height);
+}
+
+void
+RendererClear(Renderer *r, float red, float green, float blue)
+{
+    float color[] = { red, green, blue, 1.0f };
+    r->context->ClearRenderTargetView(r->target, color);
+    r->context->ClearDepthStencilView(r->dsv, D3D11_CLEAR_DEPTH, 1.0f, 0u);
+}
+
+void
+RendererPresent(Renderer *r)
+{
+    HRESULT hr;
+    
+    if(FAILED(hr = r->swap->Present(1u, 0u)))
     {
         if(hr == DXGI_ERROR_DEVICE_REMOVED)
-            GFX_DEVICE_REMOVED_EXCEPT(pDevice->GetDeviceRemovedReason());
+            GFX_DEVICE_REMOVED_EXCEPT(r->device->GetDeviceRemovedReason());
         else
             GFX_THROW_FAILED(hr);
     }
 }
 
-void
-ClearBuffer(float red, float green, float blue)
+// ======================================================================================
+// MESH
+// ======================================================================================
+
+struct Vertex
 {
-    float color[] = { red, green, blue, 1.0f };
-    pContext->ClearRenderTargetView(pTarget, color);
-    pContext->ClearDepthStencilView(pDSV, D3D11_CLEAR_DEPTH, 1.0f, 0u);
+    struct
+    {
+        float x;
+        float y;
+        float z;
+    } pos;
+};
+
+struct Mesh
+{
+    ID3D11Buffer *vertex_buffer;
+    ID3D11Buffer *index_buffer;
+    UINT          index_count;
+};
+
+void
+MeshInit(Renderer *r, Mesh *m, Vertex *vertices, UINT vertex_count,
+         unsigned short *indices, UINT index_count)
+{
+    HRESULT hr;
+    
+    D3D11_BUFFER_DESC bd       = {};
+    bd.BindFlags               = D3D11_BIND_VERTEX_BUFFER;
+    bd.Usage                   = D3D11_USAGE_DEFAULT;
+    bd.CPUAccessFlags          = 0u;
+    bd.MiscFlags               = 0u;
+    bd.ByteWidth               = sizeof(Vertex) * vertex_count;
+    bd.StructureByteStride     = sizeof(Vertex);
+    
+    D3D11_SUBRESOURCE_DATA sd  = {};
+    sd.pSysMem                 = vertices;
+    
+    GFX_THROW_FAILED(r->device->CreateBuffer(&bd, &sd, &m->vertex_buffer));
+    
+    D3D11_BUFFER_DESC ibd      = {};
+    ibd.BindFlags              = D3D11_BIND_INDEX_BUFFER;
+    ibd.Usage                  = D3D11_USAGE_DEFAULT;
+    ibd.CPUAccessFlags         = 0u;
+    ibd.MiscFlags              = 0u;
+    ibd.ByteWidth              = sizeof(unsigned short) * index_count;
+    ibd.StructureByteStride    = sizeof(unsigned short);
+    D3D11_SUBRESOURCE_DATA isd = {};
+    isd.pSysMem = indices;
+    
+    GFX_THROW_FAILED(r->device->CreateBuffer(&ibd, &isd, &m->index_buffer));
+    
+    m->index_count = index_count;
 }
 
 void
-DrawTestTriangle(float angle, float x, float z)
+MeshRelease(Mesh *m)
 {
-    /* Example of using a dx::XMVector
-    dx::XMVECTOR v = dx::XMVectorSet(3.0f, 3.0f, 0.0f, 0.0f);
-    auto result = dx::XMVector3Transform(v, dx::XMMatrixScaling(1.5f,0.0f,0.0f));
-    auto xx = dx::XMVectorGetX(result);
-*/
-    // NOTE(trist007): XMVector and XMMatrix are the main workhorses in DirectXMath
-    // they need to be 16-byte aligned so that SIMD operations can take place,
-    // so allocate on the stack because if you 
-    // allocate on the heap they won't be necessary aligned
-    // It is easier and more compact to use XMFLOAT3 and XMFLOAT4 because they don't
-    // require the 16-byte alignment they use less memory too, you can convert
-    // XMFLOATS to to a XMVECTOR perform all operations cause SIMD then afterwards
-    // convert it back to XMFLOATS
+    if(m->vertex_buffer) { m->vertex_buffer->Release(); m->vertex_buffer = 0; }
+    if(m->index_buffer)  { m->index_buffer->Release();  m->index_buffer  = 0; }
+}
+
+// ======================================================================================
+// SHADER PIPELINE
+// ======================================================================================
+
+struct ShaderPipeline
+{
+    ID3D11VertexShader *vs;
+    ID3D11PixelShader  *ps;
+    ID3D11InputLayout  *input_layout;
     
+};
+
+void
+ShaderPipelineInit(Renderer *r, ShaderPipeline *sp,
+                   const wchar_t *vs_path, const wchar_t *ps_path)
+{
     HRESULT hr;
-    
-    struct Vertex
-    {
-        struct
-        {
-            float x;
-            float y;
-            float z;
-        } pos;
-    };
-    
-    Vertex vertices[] = 
-    {
-        {-1.0f, -1.0f, -1.0f},
-        { 1.0f, -1.0f, -1.0f},
-        {-1.0f,  1.0f, -1.0f},
-        { 1.0f,  1.0f, -1.0f},
-        {-1.0f, -1.0f,  1.0f},
-        { 1.0f, -1.0f,  1.0f},
-        {-1.0f,  1.0f,  1.0f},
-        { 1.0f,  1.0f,  1.0f},
-        
-    };
-    
-    UINT vertexCount = sizeof(vertices) / sizeof(vertices[0]);
-    
-    D3D11_BUFFER_DESC bd = {};
-    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    bd.Usage = D3D11_USAGE_DEFAULT;
-    bd.CPUAccessFlags = 0u;
-    bd.MiscFlags = 0u;
-    bd.ByteWidth = sizeof(vertices);
-    bd.StructureByteStride = sizeof(Vertex);
-    
-    D3D11_SUBRESOURCE_DATA sd = {};
-    sd.pSysMem = vertices;
-    
-    GFX_THROW_FAILED(hr = (pDevice->CreateBuffer(&bd, &sd, &pVertexBuffer)));
-    
-    
-    const UINT stride = sizeof(Vertex);
-    const UINT offset = 0u;
-    pContext->IASetVertexBuffers(0u, 1u, &pVertexBuffer, &stride, &offset);
     
     // Create vertex shader
     ID3DBlob *pBlob = 0;
-    GFX_THROW_FAILED(D3DReadFileToBlob(L"../directx/code/shaders/vertex.cso", &pBlob));
-    
-    GFX_THROW_FAILED(pDevice->CreateVertexShader(
-                                                 pBlob->GetBufferPointer(),
-                                                 pBlob->GetBufferSize(),
-                                                 0,
-                                                 &pVertexShader));
-    // Bind vertex shader
-    pContext->VSSetShader(pVertexShader, 0, 0u);
+    GFX_THROW_FAILED(D3DReadFileToBlob(vs_path, &pBlob));
+    GFX_THROW_FAILED(r->device->CreateVertexShader(
+                                                   pBlob->GetBufferPointer(),
+                                                   pBlob->GetBufferSize(),
+                                                   0,
+                                                   &sp->vs));
     
     // Create input layout
     D3D11_INPUT_ELEMENT_DESC ied[] = {
         {"Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     
-    UINT numElements = sizeof(ied) / sizeof(ied[0]);
-    
-    GFX_THROW_FAILED(pDevice->CreateInputLayout(
-                                                ied, numElements,
-                                                pBlob->GetBufferPointer(),
-                                                pBlob->GetBufferSize(),
-                                                &pInputLayout));
-    pContext->IASetInputLayout(pInputLayout);
-    
+    GFX_THROW_FAILED(r->device->CreateInputLayout(
+                                                  ied, ArrayCount(ied),
+                                                  pBlob->GetBufferPointer(),
+                                                  pBlob->GetBufferSize(),
+                                                  &sp->input_layout));
     pBlob->Release();
     pBlob = 0;
     
-    // Create index buffer
-    const unsigned short indices[] =
-    {
-        0,2,1, 2,3,1,
-        1,3,5, 3,7,5,
-        2,6,3, 3,6,7,
-        4,5,7, 4,7,6,
-        0,4,2, 2,4,6,
-        0,1,4, 1,5,4
-    };
-    
-    D3D11_BUFFER_DESC ibd = {};
-    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    ibd.Usage = D3D11_USAGE_DEFAULT;
-    ibd.CPUAccessFlags = 0u;
-    ibd.MiscFlags = 0u;
-    ibd.ByteWidth = sizeof(indices);
-    ibd.StructureByteStride = sizeof(unsigned short);
-    D3D11_SUBRESOURCE_DATA isd = {};
-    isd.pSysMem = indices;
-    
-    GFX_THROW_FAILED(hr = (pDevice->CreateBuffer(&ibd, &isd, &pIndexBuffer)));
-    
-    
-    // Bind index buffer
-    pContext->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R16_UINT, 0u);
-    
-    // Create constant buffer
-    struct ConstantBuffer
-    {
-        // NOTE(trist007):  XMMATRIX is a 4x4 float matrix
-        dx::XMMATRIX transform;
-    };
-    
-    const ConstantBuffer cb =
-    {
-        {
-            // NOTE(trist007): there is Operator Overloading, you can use "*" instead
-            // of 
-            // dx::XMMatrixMultiply(
-            // dx::XMMatrixRotationZ(angle),               
-            // dx::XMMatrixScaling(3.0f/4.0f, 1.0f, 1.0f)  
-            // )
-            // NOTE(trist007): since I removed row_major in the VertexShader.hlsl I will have to
-            // Transpose
-            dx::XMMatrixTranspose(
-                                  dx::XMMatrixRotationZ(angle) *                   // rotation
-                                  dx::XMMatrixRotationX(angle) *                   // rotation
-                                  dx::XMMatrixTranslation(x, 0.0f, z+4.0f) *  // move mesh with mouse 
-                                  dx::XMMatrixPerspectiveLH(1.0f, 3.0f/4.0f, 0.5f, 10.0f)
-                                  )
-        }
-    };
-    
-    D3D11_BUFFER_DESC cbd;
-    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    cbd.Usage = D3D11_USAGE_DYNAMIC;
-    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    cbd.MiscFlags = 0u;
-    cbd.ByteWidth = sizeof(cb);
-    cbd.StructureByteStride = 0u;
-    D3D11_SUBRESOURCE_DATA csd = {};
-    csd.pSysMem = &cb;
-    GFX_THROW_FAILED(pDevice->CreateBuffer(&cbd, &csd, &pConstantBuffer));
-    
-    // Bind constant buffer to vertex shader
-    pContext->VSSetConstantBuffers(0u, 1u, &pConstantBuffer);
-    
-    struct ConstantBuffer2
-    {
-        struct
-        {
-            float r;
-            float g;
-            float b;
-            float a;
-        } face_colors[6];
-    };
-    
-    const ConstantBuffer2 cb2 =
-    {
-        {
-            {1.0f, 0.0f, 1.0f},
-            {1.0f, 0.0f, 0.0f},
-            {0.0f, 1.0f, 0.0f},
-            {0.0f, 0.0f, 1.0f},
-            {1.0f, 1.0f, 0.0f},
-            {0.0f, 1.0f, 1.0f},
-        }
-    };
-    
-    D3D11_BUFFER_DESC cbd2;
-    cbd2.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    cbd2.Usage = D3D11_USAGE_DEFAULT;
-    cbd2.CPUAccessFlags = 0u;
-    cbd2.MiscFlags = 0u;
-    cbd2.ByteWidth = sizeof(cb2);
-    cbd2.StructureByteStride = 0u;
-    D3D11_SUBRESOURCE_DATA csd2 = {};
-    csd2.pSysMem = &cb2;
-    GFX_THROW_FAILED(pDevice->CreateBuffer(&cbd2, &csd2, &pConstantBuffer2));
-    
-    // Bind constant buffer 2 to pixel shader
-    pContext->PSSetConstantBuffers(0u, 1u, &pConstantBuffer2);
     
     // Create pixel shader
-    GFX_THROW_FAILED(D3DReadFileToBlob(L"../directx/code/shaders/pixel.cso", &pBlob));
-    GFX_THROW_FAILED(pDevice->CreatePixelShader(
-                                                pBlob->GetBufferPointer(),
-                                                pBlob->GetBufferSize(),
-                                                0,
-                                                &pPixelShader));
-    // Bind pixel shader
-    pContext->PSSetShader(pPixelShader, 0, 0u);
-    
-    pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    
-    // Configure viewport
-    D3D11_VIEWPORT vp;
-    vp.Width = 640;
-    vp.Height = 480;
-    vp.MinDepth = 0;
-    vp.MaxDepth = 1;
-    vp.TopLeftX = 0;
-    vp.TopLeftY = 0;
-    pContext->RSSetViewports(1u, &vp);
-    
-    // NOTE(trist007): need to use DrawIndexed instead of Draw if using indexes
-    //pContext->Draw(vertexCount, 0u);
-    pContext->DrawIndexed(ArrayCount(indices), 0u, 0u);
+    GFX_THROW_FAILED(D3DReadFileToBlob(ps_path, &pBlob));
+    GFX_THROW_FAILED(r->device->CreatePixelShader(
+                                                  pBlob->GetBufferPointer(),
+                                                  pBlob->GetBufferSize(),
+                                                  0,
+                                                  &sp->ps));
     
     pBlob->Release();
 }
 
 void
-TimerInit(Timer *t)
+ShaderPipelineRelease(ShaderPipeline *sp)
 {
-    QueryPerformanceFrequency(&t->frequency);
-    QueryPerformanceCounter(&t->start);
+    if(sp->vs)           { sp->vs->Release();           sp->vs           = 0; }
+    if(sp->ps)           { sp->ps->Release();           sp->ps           = 0; }
+    if(sp->input_layout) { sp->input_layout->Release(); sp->input_layout = 0; }
 }
 
-float
-TimerPeek(Timer *t)
+// ======================================================================================
+// CONSTANT BUFFERS
+// ======================================================================================
+
+struct CBTransform
 {
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    return((float)(now.QuadPart - t->start.QuadPart) / (float)t->frequency.QuadPart);
+    dx::XMMATRIX transform;
+};
+
+struct CBFaceColors
+{
+    struct { float r, g, b, a; } face_colors[6];
+};
+
+struct ConstantBuffers
+{
+    ID3D11Buffer *transform;     // bound to VS slot 0
+    ID3D11Buffer *face_colors;   // bound to PS slot 0
+};
+
+void
+ConstantBuffersInit(Renderer *r, ConstantBuffers *cb)
+{
+    HRESULT hr;
+    
+    // Transform CB  — DYNAMIC so we can Map/Unmap each frame
+    D3D11_BUFFER_DESC cbd   = {};
+    cbd.BindFlags           = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.Usage               = D3D11_USAGE_DYNAMIC;
+    cbd.CPUAccessFlags      = D3D11_CPU_ACCESS_WRITE;
+    cbd.MiscFlags           = 0u;
+    cbd.ByteWidth           = sizeof(CBTransform);
+    cbd.StructureByteStride = 0u;
+    GFX_THROW_FAILED(r->device->CreateBuffer(&cbd, 0, &cb->transform));
+    
+    // Face color CB — DEFAULT, uploaded once
+    const CBFaceColors face_data =
+    {
+        {
+            {1.0f, 0.0f, 1.0f, 1.0f},
+            {1.0f, 0.0f, 0.0f, 1.0f},
+            {0.0f, 1.0f, 0.0f, 1.0f},
+            {0.0f, 0.0f, 1.0f, 1.0f},
+            {1.0f, 1.0f, 0.0f, 1.0f},
+            {0.0f, 1.0f, 1.0f, 1.0f},
+        }
+    };
+    
+    D3D11_BUFFER_DESC cbd2      = {};
+    cbd2.BindFlags              = D3D11_BIND_CONSTANT_BUFFER;
+    cbd2.Usage                  = D3D11_USAGE_DEFAULT;
+    cbd2.CPUAccessFlags         = 0u;
+    cbd2.MiscFlags              = 0u;
+    cbd2.ByteWidth              = sizeof(CBFaceColors);
+    cbd2.StructureByteStride    = 0u;
+    D3D11_SUBRESOURCE_DATA csd2 = {};
+    csd2.pSysMem                = &face_data;
+    GFX_THROW_FAILED(r->device->CreateBuffer(&cbd2, &csd2, &cb->face_colors));
 }
+
+void
+ConstantBuffersRelease(ConstantBuffers *cb)
+{
+    if(cb->transform)   { cb->transform->Release();   cb->transform   = 0; }
+    if(cb->face_colors) { cb->face_colors->Release(); cb->face_colors = 0; }
+}
+
+void
+ConstantBuffersUpdateTransform(Renderer *r, ConstantBuffers *cb, dx::XMMATRIX transform)
+{
+    D3D11_MAPPED_SUBRESOURCE msr;
+    r->context->Map(cb->transform, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &msr);
+    CBTransform *data   = (CBTransform *)msr.pData;
+    data->transform     = transform;
+    r->context->Unmap(cb->transform, 0u);
+}
+
+// ============================================================
+// DRAW
+// ============================================================
+
+// NOTE: projection matrix is computed once per camera setup, not per draw
+dx::XMMATRIX
+MakeProjection(float width, float height, float near_z, float far_z)
+{
+    return dx::XMMatrixPerspectiveLH(1.0f, height / width, near_z, far_z);
+}
+
+void
+DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
+         float angle, float x, float z,
+         dx::XMMATRIX projection)
+{
+    // Update transform constant buffer via Map/Unmap (no alloc)
+    dx::XMMATRIX transform = dx::XMMatrixTranspose(
+                                                   dx::XMMatrixRotationZ(angle) *
+                                                   dx::XMMatrixRotationX(angle) *
+                                                   dx::XMMatrixTranslation(x, 0.0f, z + 4.0f) *
+                                                   projection
+                                                   );
+    ConstantBuffersUpdateTransform(r, cb, transform);
+    
+    // Bind shaders
+    r->context->VSSetShader(sp->vs, 0, 0u);
+    r->context->PSSetShader(sp->ps, 0, 0u);
+    
+    // Bind input layout
+    r->context->IASetInputLayout(sp->input_layout);
+    
+    // Bind vertex buffer
+    const UINT stride = sizeof(Vertex);
+    const UINT offset = 0u;
+    r->context->IASetVertexBuffers(0u, 1u, &m->vertex_buffer, &stride, &offset);
+    
+    // Bind index buffer
+    r->context->IASetIndexBuffer(m->index_buffer, DXGI_FORMAT_R16_UINT, 0u);
+    
+    // Bind constant buffers
+    r->context->VSSetConstantBuffers(0u, 1u, &cb->transform);
+    r->context->PSSetConstantBuffers(0u, 1u, &cb->face_colors);
+    
+    // Topology + viewport
+    r->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    
+    D3D11_VIEWPORT vp;
+    vp.Width    = 640;
+    vp.Height   = 480;
+    vp.MinDepth = 0;
+    vp.MaxDepth = 1;
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    r->context->RSSetViewports(1u, &vp);
+    
+    r->context->DrawIndexed(m->index_count, 0u, 0u);
+}
+
+// ======================================================================================
+// WIN32
+// ======================================================================================
 
 LRESULT CALLBACK
 WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -634,6 +667,9 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+// ======================================================================================
+// WIN32
+// ======================================================================================
 
 int
 CALLBACK WinMain(
@@ -642,21 +678,24 @@ CALLBACK WinMain(
                  LPSTR     lpCmdLine,
                  int       nCmdShow)
 {
+    const UINT WIDTH = 640;
+    const UINT HEIGHT = 480;
+    
     const auto pClassName = "directx";
     // Register window class
-    WNDCLASSEX wc = {};
-    wc.cbSize = sizeof(wc);
-    wc.style = CS_OWNDC;
-    wc.lpfnWndProc = WndProc;
-    wc.cbClsExtra = 0;
-    wc.cbWndExtra = 0;
-    wc.hInstance = hInstance;
-    wc.hIcon = 0;
-    wc.hCursor = 0;
+    WNDCLASSEX wc    = {};
+    wc.cbSize        = sizeof(wc);
+    wc.style         = CS_OWNDC;
+    wc.lpfnWndProc   = WndProc;
+    wc.cbClsExtra    = 0;
+    wc.cbWndExtra    = 0;
+    wc.hInstance     = hInstance;
+    wc.hIcon         = 0;
+    wc.hCursor       = 0;
     wc.hbrBackground = 0;
-    wc.lpszMenuName = 0;
+    wc.lpszMenuName  = 0;
     wc.lpszClassName = pClassName;
-    wc.hIconSm = 0;
+    wc.hIconSm       = 0;
     
     RegisterClassEx(&wc);
     
@@ -665,63 +704,90 @@ CALLBACK WinMain(
                                0, pClassName,
                                "DirectX Tutorial",
                                WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU,
-                               200, 200, 640, 480,
+                               200, 200, WIDTH, HEIGHT,
                                0, 0, hInstance, 0
                                );
     
     ShowWindow(hwnd, SW_SHOW);
+    
 #ifdef _DEBUG
     DxgiInfoManagerInit(&gInfoManager);
 #endif
     
-    InitD3D(hwnd);
+    // One-time init
+    Renderer r = {};
+    RendererInit(&r, hwnd, WIDTH, HEIGHT);
+    
+    // Cube mesh
+    Vertex vertices[] =
+    {
+        {-1.0f, -1.0f, -1.0f},
+        { 1.0f, -1.0f, -1.0f},
+        {-1.0f,  1.0f, -1.0f},
+        { 1.0f,  1.0f, -1.0f},
+        {-1.0f, -1.0f,  1.0f},
+        { 1.0f, -1.0f,  1.0f},
+        {-1.0f,  1.0f,  1.0f},
+        { 1.0f,  1.0f,  1.0f},
+    };
+    unsigned short indices[] =
+    {
+        0,2,1, 2,3,1,
+        1,3,5, 3,7,5,
+        2,6,3, 3,6,7,
+        4,5,7, 4,7,6,
+        0,4,2, 2,4,6,
+        0,1,4, 1,5,4,
+    };
+    Mesh cube = {};
+    MeshInit(&r, &cube, vertices, ArrayCount(vertices), indices, ArrayCount(indices));
+    
+    ShaderPipeline pipeline = {};
+    ShaderPipelineInit(&r, &pipeline,
+                       L"../directx/code/shaders/vertex.cso",
+                       L"../directx/code/shaders/pixel.cso");
+    
+    ConstantBuffers cb = {};
+    ConstantBuffersInit(&r, &cb);
+    
+    dx::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 10.0f);
+    
     Timer timer;
     TimerInit(&timer);
     
-    // Message pump return value for GetMessage is 0 if WM_QUIT is received
+    // Frame loop
     MSG msg;
-    
     while(1)
     {
         while(PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
         {
             if(msg.message == WM_QUIT)
-                return(msg.wParam);
+                break;
+            
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
         
         float t = TimerPeek(&timer);
-        float c = sin(t) / 2.0f + 0.5f;
-        ClearBuffer(c, c, 1.0f);
-        POINT mousePos;
-        GetCursorPos(&mousePos);
-        ScreenToClient(hwnd, &mousePos);
+        float c = sinf(t) / 2.0f + 0.5f;
         
-        DrawTestTriangle(-t,
-                         0.0f,
-                         0.0f);
+        RendererClear(&r, c, c, 1.0f);
         
-        DrawTestTriangle(t,
-                         (float)mousePos.x/320.0f - 1.0f,
-                         // NOTE(trist007): mouse input and directx y coordinate
-                         // are opposites
-                         ((float)mousePos.y/240.0f - 1.0f)*-1.0f
-                         );
-        EndFrame();
+        POINT mouse;
+        GetCursorPos(&mouse);
+        ScreenToClient(hwnd, &mouse);
+        
+        DrawCube(&r, &cube, &pipeline, &cb, -t, 0.0f, 0.0f, projection);
+        DrawCube(&r, &cube, &pipeline, &cb,  t,
+                 (float)mouse.x / 320.0f - 1.0f,
+                 ((float)mouse.y / 240.0f - 1.0f) * -1.0f,
+                 projection);
+        
+        RendererPresent(&r);
     }
     
-    // Not worth releasing as OS will Release automatically upon process termination
-    // Free D3D11 resources
-    /*
-        pVertexBuffer->Release();
-        pVertexShader->Release();
-        pInputLayout->Release();
-        pPixelShader->Release();
-        
-        pTarget->Release();
-        pContext->Release();
-        pSwap->Release();
-        pDevice->Release();
-        */
+    MeshRelease(&cube);
+    ShaderPipelineRelease(&pipeline);
+    ConstantBuffersRelease(&cb);
+    return (int)msg.wParam;
 }
