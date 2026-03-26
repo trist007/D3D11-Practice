@@ -60,7 +60,7 @@ TimerPeek(Timer *t)
 struct HrException
 {
     int line;
-    const char *file;
+    char *file;
     HRESULT hr;
     char info[4096];
 };
@@ -387,7 +387,7 @@ struct Surface
 };
 
 bool
-SurfaceLoad(Surface *s, const wchar_t *path)
+SurfaceLoad(Surface *s, wchar_t *path)
 {
     char narrow[256];
     WideCharToMultiByte(CP_UTF8, 0, path, -1, narrow, sizeof(narrow), 0, 0);
@@ -439,7 +439,7 @@ struct Texture
 };
 
 void
-TextureInit(Renderer *r, Texture *t, const wchar_t *path, UINT slot)
+TextureInit(Renderer *r, Texture *t, wchar_t *path, UINT slot)
 {
     HRESULT hr;
     
@@ -539,7 +539,7 @@ SamplerInit(Renderer *r, Sampler *s, SamplerType type, bool reflect, UINT slot)
     s->slot = slot;
     
     D3D11_SAMPLER_DESC sd       = {};
-    sd.Filter                   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.Filter                   = D3D11_FILTER_MIN_MAG_MIP_LINEAR; // great for smoothness if use point it gets pixellated when texture is close
     sd.AddressU                 = D3D11_TEXTURE_ADDRESS_WRAP;
     sd.AddressV                 = D3D11_TEXTURE_ADDRESS_WRAP;
     sd.AddressW                 = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -643,7 +643,7 @@ struct ShaderPipeline
 
 void
 ShaderPipelineInit(Renderer *r, ShaderPipeline *sp,
-                   const wchar_t *vs_path, const wchar_t *ps_path)
+                   wchar_t *vs_path, wchar_t *ps_path)
 {
     HRESULT hr;
     
@@ -726,7 +726,7 @@ ConstantBuffersInit(Renderer *r, ConstantBuffers *cb)
     GFX_THROW_FAILED(r->device->CreateBuffer(&cbd, 0, &cb->transform));
     
     // Face color CB — DEFAULT, uploaded once
-    const CBFaceColors face_data =
+    CBFaceColors face_data =
     {
         {
             {1.0f, 0.0f, 1.0f, 1.0f},
@@ -800,8 +800,8 @@ DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
     r->context->IASetInputLayout(sp->input_layout);
     
     // Bind vertex buffer
-    const UINT stride = sizeof(Vertex);
-    const UINT offset = 0u;
+    UINT stride = sizeof(Vertex);
+    UINT offset = 0u;
     r->context->IASetVertexBuffers(0u, 1u, &m->vertex_buffer, &stride, &offset);
     
     // Bind index buffer
@@ -880,10 +880,10 @@ CALLBACK WinMain(
                  LPSTR     lpCmdLine,
                  int       nCmdShow)
 {
-    const UINT WIDTH = 640;
-    const UINT HEIGHT = 480;
+    UINT WIDTH = 640;
+    UINT HEIGHT = 480;
     
-    const auto pClassName = "directx";
+    char *pClassName = "directx";
     // Register window class
     WNDCLASSEX wc    = {};
     wc.cbSize        = sizeof(wc);
@@ -955,7 +955,7 @@ CALLBACK WinMain(
     dx::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 10.0f);
     
     Texture tex = {};
-    TextureInit(&r, &tex, L"../directx/code/textures/background.png", 0u);
+    TextureInit(&r, &tex, L"../directx/code/textures/kappa50.png", 0u);
     
     Sampler sampler = {};
     SamplerInit(&r, &sampler, SAMPLER_BILINEAR, false, 0u);
