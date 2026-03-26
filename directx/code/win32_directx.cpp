@@ -9,11 +9,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// NOTE(trist007): This include uses namespaces of DirectX
-// I don't want to do using namespace DirectX so I will use
-// my own namespace
 #include <DirectXMath.h>
-namespace dx = DirectX;
 
 // Ignore Warnings
 #pragma warning(disable:4700)
@@ -696,7 +692,7 @@ ShaderPipelineRelease(ShaderPipeline *sp)
 
 struct CBTransform
 {
-    dx::XMMATRIX transform;
+    DirectX::XMMATRIX transform;
 };
 
 struct CBFaceColors
@@ -758,7 +754,7 @@ ConstantBuffersRelease(ConstantBuffers *cb)
 }
 
 void
-ConstantBuffersUpdateTransform(Renderer *r, ConstantBuffers *cb, dx::XMMATRIX transform)
+ConstantBuffersUpdateTransform(Renderer *r, ConstantBuffers *cb, DirectX::XMMATRIX transform)
 {
     D3D11_MAPPED_SUBRESOURCE msr;
     r->context->Map(cb->transform, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &msr);
@@ -772,24 +768,24 @@ ConstantBuffersUpdateTransform(Renderer *r, ConstantBuffers *cb, dx::XMMATRIX tr
 // ============================================================
 
 // NOTE: projection matrix is computed once per camera setup, not per draw
-dx::XMMATRIX
+DirectX::XMMATRIX
 MakeProjection(float width, float height, float near_z, float far_z)
 {
-    return dx::XMMatrixPerspectiveLH(1.0f, height / width, near_z, far_z);
+    return DirectX::XMMatrixPerspectiveLH(1.0f, height / width, near_z, far_z);
 }
 
 void
 DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
          float angle, float x, float z,
-         dx::XMMATRIX projection)
+         DirectX::XMMATRIX projection)
 {
     // Update transform constant buffer via Map/Unmap (no alloc)
-    dx::XMMATRIX transform = dx::XMMatrixTranspose(
-                                                   dx::XMMatrixRotationZ(angle) *
-                                                   dx::XMMatrixRotationX(angle) *
-                                                   dx::XMMatrixTranslation(x, 0.0f, z + 4.0f) *
-                                                   projection
-                                                   );
+    DirectX::XMMATRIX transform = DirectX::XMMatrixTranspose(
+                                                             DirectX::XMMatrixRotationZ(angle) *
+                                                             DirectX::XMMatrixRotationX(angle) *
+                                                             DirectX::XMMatrixTranslation(x, 0.0f, z + 4.0f) *
+                                                             projection
+                                                             );
     ConstantBuffersUpdateTransform(r, cb, transform);
     
     // Bind shaders
@@ -952,7 +948,7 @@ CALLBACK WinMain(
     ConstantBuffers cb = {};
     ConstantBuffersInit(&r, &cb);
     
-    dx::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 10.0f);
+    DirectX::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 10.0f);
     
     Texture tex = {};
     TextureInit(&r, &tex, L"../directx/code/textures/kappa50.png", 0u);
