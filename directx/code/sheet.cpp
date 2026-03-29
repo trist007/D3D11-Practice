@@ -31,26 +31,22 @@ SheetUpdate(Sheet *s, float dt)
 }
 
 DirectX::XMMATRIX
-SheetGetTransform(Sheet *s, DirectX::XMMATRIX projection)
+SheetGetTransform(Sheet *s)
 {
-    namespace dx = DirectX;
-    return dx::XMMatrixTranspose(
-                                 dx::XMMatrixRotationRollPitchYaw(s->pitch, s->yaw, s->roll) *
-                                 dx::XMMatrixTranslation(s->r, 0.0f, 0.0f) *
-                                 dx::XMMatrixRotationRollPitchYaw(s->theta, s->phi, s->chi) *
-                                 dx::XMMatrixTranslation(0.0f, 0.0f, 20.0f) *
-                                 projection
-                                 );
+    return (
+            DirectX::XMMatrixRotationRollPitchYaw(s->pitch, s->yaw, s->roll) *
+            DirectX::XMMatrixTranslation(s->r, 0.0f, 0.0f) *
+            DirectX::XMMatrixRotationRollPitchYaw(s->theta, s->phi, s->chi) *
+            DirectX::XMMatrixTranslation(0.0f, 0.0f, 0.0f));
 }
 
 void
 SheetDraw(Renderer *r, Sheet *s,
           Mesh *m, ShaderPipeline *sp,
           ConstantBuffers *cb,
-          DirectX::XMMATRIX projection,
           UINT width, UINT height)
 {
-    ConstantBuffersUpdateTransform(r, cb, SheetGetTransform(s, projection));
+    ConstantBuffersUpdateTransform(r, cb, SheetGetTransform(s));
     
     float color[4] = { s->cr, s->cg, s->cb, s->ca };
     ConstantBuffersUpdateColor(r, cb, color);

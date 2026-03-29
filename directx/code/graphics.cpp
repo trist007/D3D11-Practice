@@ -205,6 +205,7 @@ struct Renderer
     ID3D11DepthStencilState *ds_state;
     ID3D11Texture2D    *depth_stencil;
     DirectX::XMMATRIX      projection;
+    DirectX::XMMATRIX          camera;
     bool                imgui_enabled;
 };
 
@@ -723,12 +724,16 @@ ConstantBuffersRelease(ConstantBuffers *cb)
 }
 
 void
-ConstantBuffersUpdateTransform(Renderer *r, ConstantBuffers *cb, DirectX::XMMATRIX transform)
+ConstantBuffersUpdateTransform(Renderer *r, ConstantBuffers *cb, DirectX::XMMATRIX model)
 {
+    DirectX::XMMATRIX mvp = DirectX::XMMatrixTranspose(model *
+                                                       r->camera *
+                                                       r->projection);
+    
     D3D11_MAPPED_SUBRESOURCE msr;
     r->context->Map(cb->transform, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &msr);
     CBTransform *data   = (CBTransform *)msr.pData;
-    data->transform     = transform;
+    data->transform     = mvp;
     r->context->Unmap(cb->transform, 0u);
 }
 
@@ -812,31 +817,31 @@ DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
 }
 
 void
-RendererSetProjection(Renderer *r, DirectX::XMMATRIX projection)
+SetProjection(Renderer *r, DirectX::XMMATRIX projection)
 {
     r->projection = projection;
 }
 
 DirectX::XMMATRIX
-RendererGetProjection(Renderer *r)
+GetProjection(Renderer *r)
 {
     return(r->projection);
 }
 
 void
-RendererEnableImgui(Renderer *r)
+EnableImgui(Renderer *r)
 {
     r->imgui_enabled = true;
 }
 
 void
-RendererDisableImgui(Renderer *r)
+DisableImgui(Renderer *r)
 {
     r->imgui_enabled = false;
 }
 
 bool
-RendererIsImguiEnabled(Renderer *r)
+IsImguiEnabled(Renderer *r)
 {
     return(r->imgui_enabled);
 }
@@ -876,4 +881,16 @@ EndFrame(Renderer *r)
             GFX_THROW_FAILED(hr);
         
     }
+}
+
+void
+SetCamera(Renderer *r, DirectX::FXMMATRIX cam)
+{
+    r->camera = cam;
+}
+
+DirectX::XMMATRIX
+GetCamera(Renderer *r)
+{
+    return(r->camera);
 }

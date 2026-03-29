@@ -17,6 +17,7 @@
 #include "imgui/imgui_tables.cpp"
 #include "imgui/imgui_widgets.cpp"
 
+#include "camera.cpp"
 #include "sheet.cpp"
 
 // Ignore Warnings
@@ -55,30 +56,39 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         
         case WM_KEYDOWN:
         {
+            if(ImGui::GetIO().WantCaptureKeyboard)
+            {
+                break;
+            }
             if(wParam == 'P')
             {
                 SetWindowText(hwnd, "Sick");
                 gPaused = !gPaused;
             }
             if(wParam == VK_SPACE)
-                gImguiEnabled = false;
+                gImguiEnabled = !gImguiEnabled;;
         } break;
         case WM_KEYUP:
         {
+            if(ImGui::GetIO().WantCaptureKeyboard)
+            {
+                break;
+            }
             if(wParam == 'F')
             {
                 SetWindowText(hwnd, "DirectX Tutorial");
             }
         } break;
+        
         /*
-        case WM_CHAR:
-        {
-        {
-            char buf[32];
-            wsprintfA(buf, "char %c was typed\n", (char)wParam);
-            OutputDebugStringA(buf);
-        } break;
-*/
+                case WM_CHAR:
+                {
+                {
+                    char buf[32];
+                    wsprintfA(buf, "char %c was typed\n", (char)wParam);
+                    OutputDebugStringA(buf);
+                } break;
+        */
     }
     
     return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -133,16 +143,18 @@ CALLBACK WinMain(
     
     // One-time init
     Parameters param = {};
+    Camera camera = {};
     param.speed_factor = 1.0f;
     Renderer r = {};
     RendererInit(&r, hwnd, WIDTH, HEIGHT);
+    CameraInit(&camera);
     
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(r.device, r.context);
     
-    RendererEnableImgui(&r);
+    EnableImgui(&r);
     
     // Cube mesh
     Vertex vertices[] =
@@ -197,7 +209,9 @@ CALLBACK WinMain(
     ConstantBuffers cb = {};
     ConstantBuffersInit(&r, &cb);
     
-    DirectX::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 40.0f);
+    //DirectX::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 40.0f);
+    SetProjection(&r, DirectX::XMMatrixPerspectiveLH(1.0f, 3.0f / 4.0f, 0.5f, 40.0f));
+    SetCamera(&r, DirectX::XMMatrixTranslation(0.0f, 0.0f, 20.0f));
     
     Texture tex = {};
     TextureInit(&r, &tex, L"../directx/code/textures/kappa50.png", 0u);
@@ -265,6 +279,7 @@ CALLBACK WinMain(
         //RendererClear(&r, c, c, 1.0f);
         r.imgui_enabled = gImguiEnabled;
         BeginFrame(&r, c, c, 1.0f);
+        SetCamera(&r, CameraGetMatrix(&camera));
         
         POINT mouse;
         GetCursorPos(&mouse);
@@ -280,7 +295,7 @@ CALLBACK WinMain(
             i++)
         {
             SheetUpdate(&sheets[i], dt);
-            SheetDraw(&r, &sheets[i], &plane, &sheet_pipeline, &cb, projection, WIDTH, HEIGHT);
+            SheetDraw(&r, &sheets[i], &plane, &sheet_pipeline, &cb, WIDTH, HEIGHT);
         }
         
         //DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
@@ -288,24 +303,30 @@ CALLBACK WinMain(
         //((float)mouse.y / 240.0f - 1.0f) * -1.0f,
         //projection, WIDTH, HEIGHT);
         
-        static bool show_demo_window = true;
-        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
-        
-        if(show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
-        
-        static char buffer[1024] = {};
-        
-        // ImGui windows
-        if(ImGui::Begin("Simulation Speed"))
+        if(r.imgui_enabled)
         {
-            ImGui::SliderFloat("Speed Factor", &param.speed_factor, 0.0f, 4.0f);
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate,
-                        ImGui::GetIO().Framerate);
-            ImGui::InputText("Butts", buffer, sizeof(buffer));
+            
+            CameraSpawnControlWindow(&camera);
+            static bool show_demo_window = false;
+            ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
+            
+            if(show_demo_window)
+                ImGui::ShowDemoWindow(&show_demo_window);
+            
+            static char buffer[1024] = {};
+            
+            // ImGui windows
+            if(ImGui::Begin("Simulation Speed"))
+            {
+                ImGui::SliderFloat("Speed Factor", &param.speed_factor, 0.0f, 4.0f);
+                ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate,
+                            ImGui::GetIO().Framerate);
+                ImGui::InputText("Butts", buffer, sizeof(buffer));
+            }
+            
+            
+            ImGui::End();
         }
-        
-        ImGui::End();
         
         EndFrame(&r);
         
