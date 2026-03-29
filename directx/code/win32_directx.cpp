@@ -6,12 +6,17 @@
 #include "stb_image.h"
 
 #include "graphics.cpp"
+#include "sheet.cpp"
 
 // Ignore Warnings
 #pragma warning(disable:4700)
 
+#define SHEET_COUNT 80
+
 // globals
-bool gPaused = false;
+bool gPaused = true;
+
+
 
 // ======================================================================================
 // WIN32
@@ -67,7 +72,7 @@ CALLBACK WinMain(
                  LPSTR     lpCmdLine,
                  int       nCmdShow)
 {
-    UINT WIDTH = 640;
+    UINT WIDTH  = 640;
     UINT HEIGHT = 480;
     
     char *pClassName = "directx";
@@ -131,15 +136,36 @@ CALLBACK WinMain(
     Mesh cube = {};
     MeshInit(&r, &cube, vertices, ArrayCount(vertices), indices, ArrayCount(indices));
     
+    Vertex plane_verts[] =
+    {
+        {-1.0f, -1.0f, 0.0f,   0.0f, 0.0f},
+        { 1.0f, -1.0f, 0.0f,   1.0f, 0.0f},
+        {-1.0f,  1.0f, 0.0f,   0.0f, 1.0f},
+        { 1.0f,  1.0f, 0.0f,   1.0f, 1.0f},
+    };
+    unsigned short plane_indices[] =
+    {
+        0,2,1,
+        1,2,3,
+    };
+    Mesh plane = {};
+    MeshInit(&r, &plane, plane_verts, ArrayCount(plane_verts),
+             plane_indices, ArrayCount(plane_indices));
+    
     ShaderPipeline pipeline = {};
     ShaderPipelineInit(&r, &pipeline,
                        L"../directx/code/shaders/vertex.cso",
                        L"../directx/code/shaders/pixel.cso");
     
+    ShaderPipeline sheet_pipeline = {};
+    ShaderPipelineInit(&r, &sheet_pipeline,
+                       L"../directx/code/shaders/vertex.cso",
+                       L"../directx/code/shaders/sheet_pixel.cso");
+    
     ConstantBuffers cb = {};
     ConstantBuffersInit(&r, &cb);
     
-    DirectX::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 10.0f);
+    DirectX::XMMATRIX projection = MakeProjection((float)WIDTH, (float)HEIGHT, 0.5f, 40.0f);
     
     Texture tex = {};
     TextureInit(&r, &tex, L"../directx/code/textures/kappa50.png", 0u);
@@ -149,6 +175,26 @@ CALLBACK WinMain(
     
     Timer timer;
     TimerInit(&timer);
+    
+    Sheet sheets[SHEET_COUNT];
+    
+    for(int i = 0; i < SHEET_COUNT; i++)
+    {
+        SheetInit(&sheets[i],
+                  /* r     */ 6.0f + rand_float() * 4.0f,
+                  /* droll */ rand_float() * 0.5f,
+                  /* dpitch*/ rand_float() * 0.5f,
+                  /* dyaw  */ rand_float() * 0.5f,
+                  /* dphi  */ rand_float() * 0.3f,
+                  /* dtheta*/ rand_float() * 0.3f,
+                  /* dchi  */ rand_float() * 0.3f,
+                  /* chi   */ rand_float() * DirectX::XM_2PI,
+                  /* theta */ rand_float() * DirectX::XM_2PI,
+                  /* phi   */ rand_float() * DirectX::XM_2PI,
+                  rand_float(), rand_float(), rand_float(), 1.0f);
+    }
+    
+    float last_t = TimerPeek(&timer);
     
     // Frame loop
     MSG msg;
@@ -161,6 +207,7 @@ CALLBACK WinMain(
                 // don't need to release em as OS will
                 MeshRelease(&cube);
                 ShaderPipelineRelease(&pipeline);
+                ShaderPipelineRelease(&sheet_pipeline);
                 ConstantBuffersRelease(&cb);
                 TextureRelease(&tex);
                 SamplerRelease(&sampler);
@@ -173,8 +220,10 @@ CALLBACK WinMain(
         }
         
         float t = TimerPeek(&timer);
-        float c = sinf(t) / 2.0f + 0.5f;
+        float dt = t - last_t;
+        last_t = t;
         
+        float c = sinf(t) / 2.0f + 0.5f;
         float draw_t = gPaused ? 0.0f : t;
         
         RendererClear(&r, c, c, 1.0f);
@@ -187,11 +236,21 @@ CALLBACK WinMain(
         SamplerBind(&r, &sampler);
         
         //DrawCube(&r, &cube, &pipeline, &cb, -t, 0.0f, 0.0f, projection);
+        
+        for(int i = 0;
+            i < SHEET_COUNT;
+            i++)
+        {
+            SheetUpdate(&sheets[i], dt);
+            SheetDraw(&r, &sheets[i], &plane, &sheet_pipeline, &cb, projection);
+        }
+        
         DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
                  (float)mouse.x / 320.0f - 1.0f,
                  ((float)mouse.y / 240.0f - 1.0f) * -1.0f,
                  projection);
         
         RendererPresent(&r);
+        
     }
 }

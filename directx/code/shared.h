@@ -5,6 +5,12 @@
 
 #define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
+float
+rand_float()
+{
+    return((float)rand() / (float)RAND_MAX);
+}
+
 struct Timer
 {
     LARGE_INTEGER start;

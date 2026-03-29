@@ -726,6 +726,23 @@ ConstantBuffersUpdateTransform(Renderer *r, ConstantBuffers *cb, DirectX::XMMATR
     r->context->Unmap(cb->transform, 0u);
 }
 
+void
+ConstantBuffersUpdateColor(Renderer *r, ConstantBuffers *cb, float *color)
+{
+    CBFaceColors data = {};
+    for(int i = 0;
+        i < 6;
+        i++)
+    {
+        data.face_colors[i].r = color[0];
+        data.face_colors[i].g = color[1];
+        data.face_colors[i].b = color[2];
+        data.face_colors[i].a = color[3];
+    }
+    
+    r->context->UpdateSubresource(cb->face_colors, 0u, 0, &data, 0u, 0);
+}
+
 // ============================================================
 // DRAW
 // ============================================================

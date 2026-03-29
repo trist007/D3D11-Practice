@@ -12,7 +12,7 @@ REM echo Updating etags
 REM echo,
 REM etags *.cpp *.h raylib\*.c
 
-IF NOT EXIST .\..\build mkdir ..\..\build
+IF NOT EXIST ..\..\build mkdir ..\..\build
 pushd ..\..\build
 
 REM delete pdb because debugger maintains a lock on pdb so pdb cannot be overwritten
