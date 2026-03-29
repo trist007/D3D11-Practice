@@ -177,8 +177,8 @@ CALLBACK WinMain(
         0,4,2, 2,4,6,
         0,1,4, 1,5,4,
     };
-    //Mesh cube = {};
-    //MeshInit(&r, &cube, vertices, ArrayCount(vertices), indices, ArrayCount(indices));
+    Mesh cube = {};
+    MeshInit(&r, &cube, vertices, ArrayCount(vertices), indices, ArrayCount(indices));
     
     Vertex plane_verts[] =
     {
@@ -196,10 +196,10 @@ CALLBACK WinMain(
     MeshInit(&r, &plane, plane_verts, ArrayCount(plane_verts),
              plane_indices, ArrayCount(plane_indices));
     
-    //ShaderPipeline pipeline = {};
-    //ShaderPipelineInit(&r, &pipeline,
-    //L"../directx/code/shaders/vertex.cso",
-    //L"../directx/code/shaders/pixel.cso");
+    ShaderPipeline pipeline = {};
+    ShaderPipelineInit(&r, &pipeline,
+                       L"../directx/code/shaders/vertex.cso",
+                       L"../directx/code/shaders/pixel.cso");
     
     ShaderPipeline sheet_pipeline = {};
     ShaderPipelineInit(&r, &sheet_pipeline,
@@ -251,8 +251,8 @@ CALLBACK WinMain(
             if(msg.message == WM_QUIT)
             {
                 // don't need to release em as OS will
-                //MeshRelease(&cube);
-                //ShaderPipelineRelease(&pipeline);
+                MeshRelease(&cube);
+                ShaderPipelineRelease(&pipeline);
                 ShaderPipelineRelease(&sheet_pipeline);
                 ConstantBuffersRelease(&cb);
                 TextureRelease(&tex);
@@ -303,10 +303,10 @@ CALLBACK WinMain(
             SheetDraw(&r, &sheets[i], &plane, &sheet_pipeline, &cb, WIDTH, HEIGHT);
         }
         
-        //DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
-        //(float)mouse.x / 320.0f - 1.0f,
-        //((float)mouse.y / 240.0f - 1.0f) * -1.0f,
-        //projection, WIDTH, HEIGHT);
+        DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
+                 (float)mouse.x / ((float)WIDTH / 2.0f) - 1.0f,
+                 ((float)mouse.y / ((float)HEIGHT / 2.0f) - 1.0f) * -1.0f,
+                 WIDTH, HEIGHT);
         
         if(r.imgui_enabled)
         {

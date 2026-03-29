@@ -770,17 +770,14 @@ MakeProjection(float width, float height, float near_z, float far_z)
 void
 DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
          float angle, float x, float z,
-         DirectX::XMMATRIX projection,
          UINT width, UINT height)
 {
     // Update transform constant buffer via Map/Unmap (no alloc)
-    DirectX::XMMATRIX transform = DirectX::XMMatrixTranspose(
-                                                             DirectX::XMMatrixRotationZ(angle) *
-                                                             DirectX::XMMatrixRotationX(angle) *
-                                                             DirectX::XMMatrixTranslation(x, 0.0f, z + 4.0f) *
-                                                             projection
-                                                             );
-    ConstantBuffersUpdateTransform(r, cb, transform);
+    DirectX::XMMATRIX model = (
+                               DirectX::XMMatrixRotationZ(angle) *
+                               DirectX::XMMatrixRotationX(angle) *
+                               DirectX::XMMatrixTranslation(x, 0.0f, z + 4.0f));
+    ConstantBuffersUpdateTransform(r, cb, model);
     
     // Bind shaders
     r->context->VSSetShader(sp->vs, 0, 0u);
