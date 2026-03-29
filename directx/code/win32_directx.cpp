@@ -25,8 +25,13 @@
 #define SHEET_COUNT 80
 
 // globals
-bool gPaused = true;
+bool gPaused = false;
+bool gImguiEnabled = true;
 
+struct Parameters
+{
+    float speed_factor;
+};
 
 
 // ======================================================================================
@@ -50,12 +55,13 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         
         case WM_KEYDOWN:
         {
-            if(wParam == 'F')
+            if(wParam == 'P')
             {
                 SetWindowText(hwnd, "Sick");
+                gPaused = !gPaused;
             }
             if(wParam == VK_SPACE)
-                gPaused = !gPaused;
+                gImguiEnabled = false;
         } break;
         case WM_KEYUP:
         {
@@ -126,6 +132,8 @@ CALLBACK WinMain(
 #endif
     
     // One-time init
+    Parameters param = {};
+    param.speed_factor = 1.0f;
     Renderer r = {};
     RendererInit(&r, hwnd, WIDTH, HEIGHT);
     
@@ -133,6 +141,8 @@ CALLBACK WinMain(
     ImGui::CreateContext();
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(r.device, r.context);
+    
+    RendererEnableImgui(&r);
     
     // Cube mesh
     Vertex vertices[] =
@@ -155,8 +165,8 @@ CALLBACK WinMain(
         0,4,2, 2,4,6,
         0,1,4, 1,5,4,
     };
-    Mesh cube = {};
-    MeshInit(&r, &cube, vertices, ArrayCount(vertices), indices, ArrayCount(indices));
+    //Mesh cube = {};
+    //MeshInit(&r, &cube, vertices, ArrayCount(vertices), indices, ArrayCount(indices));
     
     Vertex plane_verts[] =
     {
@@ -174,10 +184,10 @@ CALLBACK WinMain(
     MeshInit(&r, &plane, plane_verts, ArrayCount(plane_verts),
              plane_indices, ArrayCount(plane_indices));
     
-    ShaderPipeline pipeline = {};
-    ShaderPipelineInit(&r, &pipeline,
-                       L"../directx/code/shaders/vertex.cso",
-                       L"../directx/code/shaders/pixel.cso");
+    //ShaderPipeline pipeline = {};
+    //ShaderPipelineInit(&r, &pipeline,
+    //L"../directx/code/shaders/vertex.cso",
+    //L"../directx/code/shaders/pixel.cso");
     
     ShaderPipeline sheet_pipeline = {};
     ShaderPipelineInit(&r, &sheet_pipeline,
@@ -227,8 +237,8 @@ CALLBACK WinMain(
             if(msg.message == WM_QUIT)
             {
                 // don't need to release em as OS will
-                MeshRelease(&cube);
-                ShaderPipelineRelease(&pipeline);
+                //MeshRelease(&cube);
+                //ShaderPipelineRelease(&pipeline);
                 ShaderPipelineRelease(&sheet_pipeline);
                 ConstantBuffersRelease(&cb);
                 TextureRelease(&tex);
@@ -242,19 +252,19 @@ CALLBACK WinMain(
             DispatchMessage(&msg);
         }
         
-        // ImGUI
-        ImGui_ImplDX11_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
-        
         float t = TimerPeek(&timer);
         float dt = t - last_t;
+        dt *= param.speed_factor;
         last_t = t;
+        
+        
         
         float c = sinf(t) / 2.0f + 0.5f;
         float draw_t = gPaused ? 0.0f : t;
         
-        RendererClear(&r, c, c, 1.0f);
+        //RendererClear(&r, c, c, 1.0f);
+        r.imgui_enabled = gImguiEnabled;
+        BeginFrame(&r, c, c, 1.0f);
         
         POINT mouse;
         GetCursorPos(&mouse);
@@ -273,21 +283,31 @@ CALLBACK WinMain(
             SheetDraw(&r, &sheets[i], &plane, &sheet_pipeline, &cb, projection, WIDTH, HEIGHT);
         }
         
-        DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
-                 (float)mouse.x / 320.0f - 1.0f,
-                 ((float)mouse.y / 240.0f - 1.0f) * -1.0f,
-                 projection, WIDTH, HEIGHT);
+        //DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
+        //(float)mouse.x / 320.0f - 1.0f,
+        //((float)mouse.y / 240.0f - 1.0f) * -1.0f,
+        //projection, WIDTH, HEIGHT);
         
         static bool show_demo_window = true;
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Once);
+        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
         
         if(show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
         
-        ImGui::Render();
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        static char buffer[1024] = {};
         
-        RendererPresent(&r);
+        // ImGui windows
+        if(ImGui::Begin("Simulation Speed"))
+        {
+            ImGui::SliderFloat("Speed Factor", &param.speed_factor, 0.0f, 4.0f);
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate,
+                        ImGui::GetIO().Framerate);
+            ImGui::InputText("Butts", buffer, sizeof(buffer));
+        }
+        
+        ImGui::End();
+        
+        EndFrame(&r);
         
     }
 }

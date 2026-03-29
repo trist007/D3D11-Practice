@@ -7,6 +7,10 @@
 
 #include "shared.h"
 
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_win32.h"
+#include "imgui/imgui_impl_dx11.h"
+
 // DirectX11 Libraries
 #pragma comment(lib, "d3d11.lib") // Tells Compiler to link to this library
 #pragma comment(lib, "dxguid.lib") // Tells Compiler to link to this library
@@ -200,6 +204,8 @@ struct Renderer
     ID3D11DepthStencilView       *dsv;
     ID3D11DepthStencilState *ds_state;
     ID3D11Texture2D    *depth_stencil;
+    DirectX::XMMATRIX      projection;
+    bool                imgui_enabled;
 };
 
 void
@@ -803,4 +809,71 @@ DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
     r->context->RSSetViewports(1u, &vp);
     
     r->context->DrawIndexed(m->index_count, 0u, 0u);
+}
+
+void
+RendererSetProjection(Renderer *r, DirectX::XMMATRIX projection)
+{
+    r->projection = projection;
+}
+
+DirectX::XMMATRIX
+RendererGetProjection(Renderer *r)
+{
+    return(r->projection);
+}
+
+void
+RendererEnableImgui(Renderer *r)
+{
+    r->imgui_enabled = true;
+}
+
+void
+RendererDisableImgui(Renderer *r)
+{
+    r->imgui_enabled = false;
+}
+
+bool
+RendererIsImguiEnabled(Renderer *r)
+{
+    return(r->imgui_enabled);
+}
+
+void
+BeginFrame(Renderer *r, float red, float green, float blue)
+{
+    if(r->imgui_enabled)
+    {
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+    }
+    
+    float color[] = { red, green, blue, 1.0f };
+    r->context->ClearRenderTargetView(r->target, color);
+    r->context->ClearDepthStencilView(r->dsv, D3D11_CLEAR_DEPTH, 1.0f, 0u);
+    
+}
+
+void
+EndFrame(Renderer *r)
+{
+    if(r->imgui_enabled)
+    {
+        ImGui::Render();
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    }
+    
+    HRESULT hr;
+    
+    if(FAILED(hr = r->swap->Present(1u, 0u)))
+    {
+        if(hr == DXGI_ERROR_DEVICE_REMOVED)
+            GFX_DEVICE_REMOVED_EXCEPT(r->device->GetDeviceRemovedReason());
+        else
+            GFX_THROW_FAILED(hr);
+        
+    }
 }
