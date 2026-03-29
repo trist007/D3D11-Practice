@@ -22,18 +22,16 @@ CameraInit(Camera *c)
 DirectX::XMMATRIX
 CameraGetMatrix(Camera *c)
 {
-    namespace dx = DirectX;
+    const DirectX::XMVECTOR pos = DirectX::XMVector3Transform(
+                                                              DirectX::XMVectorSet(0.0f, 0.0f, -c->r, 0.0f),
+                                                              DirectX::XMMatrixRotationRollPitchYaw(c->phi, -c->theta, 0.0f)
+                                                              );
     
-    const dx::XMVECTOR pos = dx::XMVector3Transform(
-                                                    dx::XMVectorSet(0.0f, 0.0f, -c->r, 0.0f),
-                                                    dx::XMMatrixRotationRollPitchYaw(c->phi, -c->theta, 0.0f)
-                                                    );
-    
-    return dx::XMMatrixLookAtLH(
-                                pos,
-                                dx::XMVectorZero(),
-                                dx::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
-                                ) * dx::XMMatrixRotationRollPitchYaw(c->pitch, -c->yaw, c->roll);
+    return DirectX::XMMatrixLookAtLH(
+                                     pos,
+                                     DirectX::XMVectorZero(),
+                                     DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
+                                     ) * DirectX::XMMatrixRotationRollPitchYaw(c->pitch, -c->yaw, c->roll);
 }
 
 void

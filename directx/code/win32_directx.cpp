@@ -276,6 +276,11 @@ CALLBACK WinMain(
         float c = sinf(t) / 2.0f + 0.5f;
         float draw_t = gPaused ? 0.0f : t;
         
+        if(!gPaused)
+            dt *= param.speed_factor;
+        else
+            dt = 0.0f;
+        
         //RendererClear(&r, c, c, 1.0f);
         r.imgui_enabled = gImguiEnabled;
         BeginFrame(&r, c, c, 1.0f);
