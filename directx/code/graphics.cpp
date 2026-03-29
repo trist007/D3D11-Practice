@@ -279,8 +279,8 @@ RendererInitDepthStencil(Renderer *r, UINT width, UINT height)
     
     // Create depth stencil texture
     D3D11_TEXTURE2D_DESC descDepth = {};
-    descDepth.Width                = 640u;
-    descDepth.Height               = 480u;
+    descDepth.Width                = 1024u;
+    descDepth.Height               = 768u;
     descDepth.MipLevels            = 1u;
     descDepth.ArraySize            = 1u;
     descDepth.Format               = DXGI_FORMAT_D32_FLOAT; // special format for Depth hence D32
@@ -751,13 +751,16 @@ ConstantBuffersUpdateColor(Renderer *r, ConstantBuffers *cb, float *color)
 DirectX::XMMATRIX
 MakeProjection(float width, float height, float near_z, float far_z)
 {
-    return DirectX::XMMatrixPerspectiveLH(1.0f, height / width, near_z, far_z);
+    float fov = DirectX::XM_PIDIV4;
+    float aspect = width / height;
+    return(DirectX::XMMatrixPerspectiveFovLH(fov, aspect, near_z, far_z));
 }
 
 void
 DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
          float angle, float x, float z,
-         DirectX::XMMATRIX projection)
+         DirectX::XMMATRIX projection,
+         UINT width, UINT height)
 {
     // Update transform constant buffer via Map/Unmap (no alloc)
     DirectX::XMMATRIX transform = DirectX::XMMatrixTranspose(
@@ -791,8 +794,8 @@ DrawCube(Renderer *r, Mesh *m, ShaderPipeline *sp, ConstantBuffers *cb,
     r->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     
     D3D11_VIEWPORT vp;
-    vp.Width    = 640;
-    vp.Height   = 480;
+    vp.Width    = (float)width;
+    vp.Height   = (float)height;
     vp.MinDepth = 0;
     vp.MaxDepth = 1;
     vp.TopLeftX = 0;

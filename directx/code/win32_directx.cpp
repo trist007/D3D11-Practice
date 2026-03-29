@@ -1,11 +1,22 @@
+#define IMGUI_DEFINE_MATH_OPERATORS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <windowsx.h>
 #include <math.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #include "graphics.cpp"
+
+#include "imgui/imgui.cpp"
+#include "imgui/imgui_impl_win32.cpp"
+#include "imgui/imgui_impl_dx11.cpp"
+#include "imgui/imgui_demo.cpp"
+#include "imgui/imgui_draw.cpp"
+#include "imgui/imgui_tables.cpp"
+#include "imgui/imgui_widgets.cpp"
+
 #include "sheet.cpp"
 
 // Ignore Warnings
@@ -25,6 +36,11 @@ bool gPaused = true;
 LRESULT CALLBACK
 WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if(ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+    {
+        return(true);
+    }
+    
     switch(msg)
     {
         case WM_CLOSE:
@@ -51,6 +67,7 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         /*
         case WM_CHAR:
         {
+        {
             char buf[32];
             wsprintfA(buf, "char %c was typed\n", (char)wParam);
             OutputDebugStringA(buf);
@@ -72,8 +89,8 @@ CALLBACK WinMain(
                  LPSTR     lpCmdLine,
                  int       nCmdShow)
 {
-    UINT WIDTH  = 640;
-    UINT HEIGHT = 480;
+    UINT WIDTH  = 1024;
+    UINT HEIGHT = 768;
     
     char *pClassName = "directx";
     // Register window class
@@ -111,6 +128,11 @@ CALLBACK WinMain(
     // One-time init
     Renderer r = {};
     RendererInit(&r, hwnd, WIDTH, HEIGHT);
+    
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui_ImplWin32_Init(hwnd);
+    ImGui_ImplDX11_Init(r.device, r.context);
     
     // Cube mesh
     Vertex vertices[] =
@@ -211,6 +233,7 @@ CALLBACK WinMain(
                 ConstantBuffersRelease(&cb);
                 TextureRelease(&tex);
                 SamplerRelease(&sampler);
+                ImGui_ImplWin32_Shutdown();
                 
                 return((int)msg.wParam);
             }
@@ -218,6 +241,11 @@ CALLBACK WinMain(
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+        
+        // ImGUI
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
         
         float t = TimerPeek(&timer);
         float dt = t - last_t;
@@ -242,13 +270,22 @@ CALLBACK WinMain(
             i++)
         {
             SheetUpdate(&sheets[i], dt);
-            SheetDraw(&r, &sheets[i], &plane, &sheet_pipeline, &cb, projection);
+            SheetDraw(&r, &sheets[i], &plane, &sheet_pipeline, &cb, projection, WIDTH, HEIGHT);
         }
         
         DrawCube(&r, &cube, &pipeline, &cb,  draw_t,
                  (float)mouse.x / 320.0f - 1.0f,
                  ((float)mouse.y / 240.0f - 1.0f) * -1.0f,
-                 projection);
+                 projection, WIDTH, HEIGHT);
+        
+        static bool show_demo_window = true;
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Once);
+        
+        if(show_demo_window)
+            ImGui::ShowDemoWindow(&show_demo_window);
+        
+        ImGui::Render();
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         
         RendererPresent(&r);
         

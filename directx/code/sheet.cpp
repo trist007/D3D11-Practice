@@ -47,7 +47,8 @@ void
 SheetDraw(Renderer *r, Sheet *s,
           Mesh *m, ShaderPipeline *sp,
           ConstantBuffers *cb,
-          DirectX::XMMATRIX projection)
+          DirectX::XMMATRIX projection,
+          UINT width, UINT height)
 {
     ConstantBuffersUpdateTransform(r, cb, SheetGetTransform(s, projection));
     
@@ -69,7 +70,7 @@ SheetDraw(Renderer *r, Sheet *s,
     r->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     
     D3D11_VIEWPORT vp = {};
-    vp.Width    = 640; vp.Height   = 480;
+    vp.Width    = (float)width; vp.Height   = (float)height;
     vp.MinDepth = 0;   vp.MaxDepth = 1;
     r->context->RSSetViewports(1u, &vp);
     
